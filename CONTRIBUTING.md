@@ -2,7 +2,7 @@
 
 ## Scope
 
-Remora stays intentionally small. Contributions should strengthen session-scoped routing, portability, diagnostics, documentation, or tests without turning the launcher into a proxy, account manager, GUI, or persistent Claude configuration manager.
+remora stays intentionally small. Contributions should strengthen session-scoped routing, portability, diagnostics, documentation, or tests without turning the launcher into a proxy, account manager, GUI, or persistent Claude configuration manager.
 
 | In scope | Out of scope |
 |---|---|

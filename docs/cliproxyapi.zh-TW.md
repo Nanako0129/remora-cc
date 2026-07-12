@@ -1,6 +1,6 @@
 # CLIProxyAPI Gateway 快速部署
 
-> Remora 不負責安裝或管理 CLIProxyAPI。這份指引涵蓋最小 Docker Compose 部署、人工 Codex OAuth GUI 操作，以及與 Remora 連線的安全邊界。
+> remora 不負責安裝或管理 CLIProxyAPI。這份指引涵蓋最小 Docker Compose 部署、人工 Codex OAuth GUI 操作，以及與 remora 連線的安全邊界。
 
 ## 目錄
 
@@ -8,7 +8,7 @@
 - [選擇同機或遠端拓撲](#選擇同機或遠端拓撲)
 - [啟動與檢查](#啟動與檢查)
 - [透過 GUI 完成 Codex OAuth](#透過-gui-完成-codex-oauth)
-- [連接 Remora](#連接-remora)
+- [連接 remora](#連接-remora)
 - [模型設定](#模型設定)
 - [429 與 cooldown](#429-與-cooldown)
 - [資料與備份](#資料與備份)
@@ -21,7 +21,7 @@
 
 | 需求 | 最低條件 |
 |---|---|
-| 主機 | Remora 所在電腦本身，或它能連線的 Linux server／NAS |
+| 主機 | remora 所在電腦本身，或它能連線的 Linux server／NAS |
 | Runtime | Docker Engine 與 Compose plugin |
 | 網路 | 可信任 LAN／VPN；跨不可信網路時必須使用 TLS |
 | Secret | Proxy API key 與 management key 各自獨立隨機產生 |
@@ -33,7 +33,7 @@ mkdir -p ~/containers/cliproxyapi/{auths,logs}
 chmod 700 ~/containers/cliproxyapi ~/containers/cliproxyapi/auths
 cd ~/containers/cliproxyapi
 
-openssl rand -base64 32  # Proxy API key：Remora 使用
+openssl rand -base64 32  # Proxy API key：remora 使用
 openssl rand -base64 32  # Management key：瀏覽器 GUI 使用
 ```
 
@@ -41,7 +41,7 @@ openssl rand -base64 32  # Management key：瀏覽器 GUI 使用
 
 ## 選擇同機或遠端拓撲
 
-CLIProxyAPI 可以和 Remora 安裝在同一台電腦，也可以放在另一台 home lab。兩者的 port exposure、management policy、OAuth callback 與 Remora URL 不同，建立設定前先選定拓撲。
+CLIProxyAPI 可以和 remora 安裝在同一台電腦，也可以放在另一台 home lab。兩者的 port exposure、management policy、OAuth callback 與 remora URL 不同，建立設定前先選定拓撲。
 
 | 設定 | 同一台電腦 | 另一台 host／home lab |
 |---|---|---|
@@ -49,8 +49,8 @@ CLIProxyAPI 可以和 Remora 安裝在同一台電腦，也可以放在另一台
 | Management API | `allow-remote: false` | 保持 `allow-remote: false`，透過 SSH 存取 |
 | Management URL | `http://127.0.0.1:8317/management.html` | Tunnel 後使用 `http://127.0.0.1:8318/management.html` |
 | OAuth callback | Browser 直接連本機 `1455` | Server `1455` 保持 loopback，再使用 SSH tunnel |
-| Remora `base_url` | `http://127.0.0.1:8317` | `http://SERVER_LAN_IP:8317` |
-| 網路限制 | 不對 LAN 開放 | Firewall 只允許 Remora client IP／VPN subnet |
+| remora `base_url` | `http://127.0.0.1:8317` | `http://SERVER_LAN_IP:8317` |
+| 網路限制 | 不對 LAN 開放 | Firewall 只允許 remora client IP／VPN subnet |
 
 以下範例使用較安全的「同一台電腦」預設值。若 CLIProxyAPI 位於另一台 host，請套用每一個標示為「遠端 host」的修改。
 
@@ -112,7 +112,7 @@ ports:
   - "127.0.0.1:1455:1455"
 ```
 
-Server 的 `1455` 仍只綁 loopback。Host firewall 必須把 `8317` 限制到 Remora 電腦或可信任 VPN subnet。Management page 與 model endpoint 雖然共用 port，但 `allow-remote: false` 會拒絕不是從 server localhost 進來的 management request。
+Server 的 `1455` 仍只綁 loopback。Host firewall 必須把 `8317` 限制到 remora 電腦或可信任 VPN subnet。Management page 與 model endpoint 雖然共用 port，但 `allow-remote: false` 會拒絕不是從 server localhost 進來的 management request。
 
 如果可信任 LAN 必須直接開啟 management UI，可以明確改成 `allow-remote: true`；此時 management key 會成為這些 route 的主要防線，安全性不如以下 SSH 方法。
 
@@ -159,7 +159,7 @@ ssh \
 
 同一台電腦不需要 tunnel，browser 可以直接連上 loopback callback。Docker 位於**遠端 host**時，授權完成前保持上一節的雙 port SSH session 開啟。若 GUI 要求貼回 callback URL 或 authorization result，直接貼入 GUI，不要存進 shell script。成功後，掛載的 `auths/` 目錄會出現 Codex JSON credential。
 
-> ⚠️ **不要自動化瀏覽器登入，也不要把 OAuth JSON 複製到 Remora。** `auths/` 含 refresh material，只能留在 gateway host。
+> ⚠️ **不要自動化瀏覽器登入，也不要把 OAuth JSON 複製到 remora。** `auths/` 含 refresh material，只能留在 gateway host。
 
 使用 proxy API key 驗證 model catalog：
 
@@ -171,9 +171,9 @@ curl --fail --silent --show-error \
 
 HTTP `200` 且 `.data` 內有模型，代表 proxy API key 與 OAuth credential 都能使用。
 
-## 連接 Remora
+## 連接 remora
 
-修改 Remora 設定：
+修改 remora 設定：
 
 ```toml
 [proxy]
@@ -193,9 +193,9 @@ remora doctor --online
 
 ## 模型設定
 
-Remora 會原樣傳送設定的 model name。CLIProxyAPI 的 `/v1/models` 必須包含：
+remora 會原樣傳送設定的 model name。CLIProxyAPI 的 `/v1/models` 必須包含：
 
-| Remora 欄位 | 預設模型 |
+| remora 欄位 | 預設模型 |
 |---|---|
 | `models.main` | `gpt-5.6-sol` |
 | `models.default_opus` | `gpt-5.6-sol` |
@@ -221,9 +221,9 @@ curl -fsS \
   | jq '.models[] | select(.slug | startswith("gpt-5.6-")) | {slug, context_window}'
 ```
 
-Remora 會做同一個唯讀查詢，但安全預設遵循原生 Claude Code 對未知 custom model id 的 200K 上限。`stock` 模式不注入 context 或 compact override；Claude 原生的 output reserve 與 precompute policy 維持權威。CLIProxyAPI 不需要修改或重啟。
+remora 會做同一個唯讀查詢，但安全預設遵循原生 Claude Code 對未知 custom model id 的 200K 上限。`stock` 模式不注入 context 或 compact override；Claude 原生的 output reserve 與 precompute policy 維持權威。CLIProxyAPI 不需要修改或重啟。
 
-可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。Remora 會把同一份 catalog 轉成逐一對應的 model/window map，交給 Calico 預設休眠的 adapter。Provider window 為 372K 時，statusline consumer 看到 353.4K usable context，約 334.8K compact。Binary 沒有 adapter marker 時，Remora 會拒絕啟動該模式。
+可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會把同一份 catalog 轉成逐一對應的 model/window map，交給 Calico 預設休眠的 adapter。Provider window 為 372K 時，statusline consumer 看到 353.4K usable context，約 334.8K compact。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。
 
 | 來源 | 意義 |
 |---|---|
@@ -278,4 +278,4 @@ CLIProxyAPI v7.2.67 工作在 request 與 credential 層。Codex executor 能辨
 | `config.yaml` | API key、management policy | 加密備份，權限 `0600` |
 | `auths/` | OAuth access／refresh material | 加密且限制存取，不進 Git |
 | `logs/` | 錯誤與 request log | 短期保留，分享前先檢查敏感內容 |
-| Remora TOML | Gateway address 與 token command | 移除主機特定 secret 後才可 version control |
+| remora TOML | Gateway address 與 token command | 移除主機特定 secret 後才可 version control |

@@ -1,6 +1,6 @@
 # CLIProxyAPI Gateway Runbook
 
-> Remora does not install or manage CLIProxyAPI. This runbook documents the boundary between them and keeps OAuth enrollment as an explicit human step.
+> remora does not install or manage CLIProxyAPI. This runbook documents the boundary between them and keeps OAuth enrollment as an explicit human step.
 
 ## Contents
 
@@ -8,7 +8,7 @@
 - [Choose the host topology](#choose-the-host-topology)
 - [Start and inspect](#start-and-inspect)
 - [OAuth enrollment in the GUI](#oauth-enrollment-in-the-gui)
-- [Remora connection](#remora-connection)
+- [remora connection](#remora-connection)
 - [Model aliases](#model-aliases)
 - [429 diagnosis](#429-diagnosis)
 - [Data and backup policy](#data-and-backup-policy)
@@ -21,7 +21,7 @@ This example follows the upstream [Docker Compose guide](https://help.router-for
 
 | Requirement | Minimum |
 |---|---|
-| Host | The Remora computer itself, or a Linux server/NAS reachable from it |
+| Host | The remora computer itself, or a Linux server/NAS reachable from it |
 | Runtime | Docker Engine with the Compose plugin |
 | Network | Trusted LAN or VPN; use TLS when crossing an untrusted network |
 | Secrets | Separate random proxy API key and management key |
@@ -33,7 +33,7 @@ mkdir -p ~/containers/cliproxyapi/{auths,logs}
 chmod 700 ~/containers/cliproxyapi ~/containers/cliproxyapi/auths
 cd ~/containers/cliproxyapi
 
-openssl rand -base64 32  # proxy API key: Remora uses this
+openssl rand -base64 32  # proxy API key: remora uses this
 openssl rand -base64 32  # management key: browser GUI uses this
 ```
 
@@ -41,7 +41,7 @@ openssl rand -base64 32  # management key: browser GUI uses this
 
 ## Choose the host topology
 
-CLIProxyAPI can run on the same computer as Remora or on another machine. Decide before creating the files because the published port, management policy, callback handling, and Remora URL differ.
+CLIProxyAPI can run on the same computer as remora or on another machine. Decide before creating the files because the published port, management policy, callback handling, and remora URL differ.
 
 | Setting | Same computer | Separate host / home lab |
 |---|---|---|
@@ -49,8 +49,8 @@ CLIProxyAPI can run on the same computer as Remora or on another machine. Decide
 | Management API | `allow-remote: false` | Keep `allow-remote: false`; reach it through SSH |
 | Management URL | `http://127.0.0.1:8317/management.html` | `http://127.0.0.1:8318/management.html` through the tunnel |
 | OAuth callback | Browser reaches local `1455` directly | Keep server `1455` on loopback and use an SSH tunnel |
-| Remora `base_url` | `http://127.0.0.1:8317` | `http://SERVER_LAN_IP:8317` |
-| Network control | No LAN exposure | Firewall `8317` to the Remora client subnet/address |
+| remora `base_url` | `http://127.0.0.1:8317` | `http://SERVER_LAN_IP:8317` |
+| Network control | No LAN exposure | Firewall `8317` to the remora client subnet/address |
 
 The examples below use the safer same-computer defaults. For a separate host, apply every change marked **separate host**.
 
@@ -112,7 +112,7 @@ ports:
   - "127.0.0.1:1455:1455"
 ```
 
-Keep port `1455` on server loopback. Restrict `8317` with the host firewall to the Remora machine or trusted VPN subnet. Although the management page and model endpoint share this port, `allow-remote: false` rejects management requests that do not arrive from server localhost.
+Keep port `1455` on server loopback. Restrict `8317` with the host firewall to the remora machine or trusted VPN subnet. Although the management page and model endpoint share this port, `allow-remote: false` rejects management requests that do not arrive from server localhost.
 
 If a trusted LAN must access the management UI directly, `allow-remote: true` is an explicit alternative. It makes the management key the remaining protection for those routes; prefer the SSH method below.
 
@@ -161,9 +161,9 @@ OAuth is intentionally a human handoff. Open the management panel, select the OA
 
 On the **same computer**, no tunnel is needed because the browser can reach the loopback callback directly. On a **separate Docker host**, keep the two-forward SSH session from the previous section open until the browser flow completes. If the panel asks for the final callback URL or authorization result, paste it into the panel rather than storing it in a shell script. Successful enrollment creates a Codex JSON credential under the mounted `auths/` directory.
 
-> ⚠️ **Never automate browser login or copy OAuth JSON into Remora.** The `auths/` directory contains refresh material and belongs only on the gateway host.
+> ⚠️ **Never automate browser login or copy OAuth JSON into remora.** The `auths/` directory contains refresh material and belongs only on the gateway host.
 
-The deployment is ready for Remora when the gateway returns a model catalog with the configured bearer token:
+The deployment is ready for remora when the gateway returns a model catalog with the configured bearer token:
 
 ```bash
 curl --fail --silent --show-error \
@@ -173,7 +173,7 @@ curl --fail --silent --show-error \
 
 For a separate-host deployment, replace loopback with the gateway's LAN or VPN address. An HTTP `200` response and a non-empty `.data` model list confirm the proxy API key and OAuth credential are both usable.
 
-## Remora connection
+## remora connection
 
 ```toml
 [proxy]
@@ -186,9 +186,9 @@ If the gateway runs on another trusted host, replace loopback with its LAN or VP
 
 ## Model aliases
 
-Remora forwards model names exactly as configured. Confirm every name appears in the gateway model catalog or is a documented alias:
+remora forwards model names exactly as configured. Confirm every name appears in the gateway model catalog or is a documented alias:
 
-| Remora field | Default |
+| remora field | Default |
 |---|---|
 | `models.main` | `gpt-5.6-sol` |
 | `models.default_opus` | `gpt-5.6-sol` |
@@ -216,9 +216,9 @@ curl -fsS \
   | jq '.models[] | select(.slug | startswith("gpt-5.6-")) | {slug, context_window}'
 ```
 
-Remora performs the lookup read-only, but its safe default follows stock Claude Code's 200K limit for unknown custom model ids. In `stock` mode it does not inject context or compact overrides; Claude's native output reserve and precompute policy remain authoritative. CLIProxyAPI needs no change or restart.
+remora performs the lookup read-only, but its safe default follows stock Claude Code's 200K limit for unknown custom model ids. In `stock` mode it does not inject context or compact overrides; Claude's native output reserve and precompute policy remain authoritative. CLIProxyAPI needs no change or restart.
 
-The optional `calico` mode requires a verified Calico Claude binary. It passes an exact model/window map from the same catalog into Calico's dormant adapter. With a 372K provider window, status-line consumers see 353.4K usable context and compaction begins near 334.8K. Remora refuses to launch this mode if the binary does not contain the adapter marker.
+The optional `calico` mode requires a verified Calico Claude binary. It passes an exact model/window map from the same catalog into Calico's dormant adapter. With a 372K provider window, status-line consumers see 353.4K usable context and compaction begins near 334.8K. remora refuses to launch this mode if the binary does not contain the adapter marker.
 
 | Source | Meaning |
 |---|---|
@@ -254,7 +254,7 @@ Use latency and response body to separate upstream limiting from local gateway c
 | Response contains `model_cooldown` | No credential is currently selectable for that model |
 | Restart immediately clears the condition | Cooldown state was memory-only, not an expired OAuth token |
 
-For CLIProxyAPI v7.2.67, generic 429 handling can promote the credential/model into a quota-style cooldown. With one credential, that becomes a full model blackout. Keep cooldown persistence disabled unless you explicitly need it, lower Remora concurrency when the provider is sensitive, and retain the original upstream 429 body when debugging.
+For CLIProxyAPI v7.2.67, generic 429 handling can promote the credential/model into a quota-style cooldown. With one credential, that becomes a full model blackout. Keep cooldown persistence disabled unless you explicitly need it, lower remora concurrency when the provider is sensitive, and retain the original upstream 429 body when debugging.
 
 To keep a single file-backed Codex OAuth credential selectable after an upstream 429, add the following top-level field to that credential's JSON file inside the mounted `auths/` directory:
 
@@ -285,4 +285,4 @@ To capture a future reproduction without exposing source or tokens, record the f
 | `config.yaml` | API keys, management policy, aliases | Encrypted secret backup |
 | `auths/` | OAuth access and refresh material | Encrypted, access-restricted backup |
 | `logs/` | Requests/errors; may contain source or prompts when debugging | Short retention; inspect before sharing |
-| Remora TOML | Gateway address and token retrieval command | Safe to version only after removing host-specific secrets |
+| remora TOML | Gateway address and token retrieval command | Safe to version only after removing host-specific secrets |

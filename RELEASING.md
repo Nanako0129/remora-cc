@@ -1,4 +1,4 @@
-# Releasing Remora
+# Releasing remora
 
 > A release is complete only when tests pass, the tag matches both version declarations, GitHub publishes an attested archive, and the pinned one-prompt URL resolves.
 
@@ -30,7 +30,7 @@ The suite includes installer isolation, unrelated-executable collision protectio
 Commit the reviewed tree, create a signed tag when signing is configured, and push the branch and tag:
 
 ```bash
-git tag -s vX.Y.Z -m "Remora vX.Y.Z"
+git tag -s vX.Y.Z -m "remora vX.Y.Z"
 git push origin main
 git push origin vX.Y.Z
 ```

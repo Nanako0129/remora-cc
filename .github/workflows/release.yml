@@ -39,7 +39,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
-            --title "Remora $GITHUB_REF_NAME" \
+            --title "remora $GITHUB_REF_NAME" \
             --generate-notes \
             dist/checksums.txt \
             dist/remora-cc-*.tar.gz

@@ -11,16 +11,16 @@ BIN_DIR="$PREFIX/bin"
 LINK="$BIN_DIR/remora"
 
 fail() {
-  echo "Remora install: $*" >&2
+  echo "remora install: $*" >&2
   exit 1
 }
 
 python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' || {
-  echo "Remora requires Python 3.11 or newer." >&2
+  echo "remora requires Python 3.11 or newer." >&2
   exit 1
 }
 command -v claude >/dev/null 2>&1 || {
-  echo "Claude Code is not on PATH. Install it before Remora." >&2
+  echo "Claude Code is not on PATH. Install it before remora." >&2
   exit 1
 }
 
@@ -68,7 +68,7 @@ chmod +x "$INSTALL_DIR/bin/remora" "$INSTALL_DIR/src/remora.py" "$INSTALL_DIR/un
 ln -s "$INSTALL_DIR/src/remora.py" "$LINK.new"
 mv -f "$LINK.new" "$LINK"
 
-echo "Installed Remora in $INSTALL_DIR"
+echo "Installed remora in $INSTALL_DIR"
 echo "Launcher: $LINK"
 echo "Native claude configuration was not modified."
 case ":$PATH:" in

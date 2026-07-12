@@ -368,7 +368,7 @@ def build_launch(
 
     if has_option(args, "--settings"):
         raise RemoraError(
-            "--settings cannot be combined with Remora routing because Claude Code "
+            "--settings cannot be combined with remora routing because Claude Code "
             "accepts a single additional-settings source; put persistent settings in "
             "Claude's normal settings files instead"
         )
@@ -463,7 +463,7 @@ def doctor(config: dict[str, Any], online: bool) -> int:
         print(f"FAIL proxy token: {exc}")
 
     if os.environ.get("CLAUDE_CODE_SUBAGENT_MODEL"):
-        print("PASS global subagent override: present, but Remora clears it for its child session")
+        print("PASS global subagent override: present, but remora clears it for its child session")
     else:
         print("PASS global subagent override: absent")
 
@@ -546,7 +546,7 @@ commands:
   agents             show the effective role/model/effort map
   render-agents      print the exact JSON passed to Claude Code
   dry-run [args...]  show the sanitized child environment and command
-  version            print Remora version
+  version            print remora version
   help               show this help
 
 Any other arguments are passed to the native claude executable.

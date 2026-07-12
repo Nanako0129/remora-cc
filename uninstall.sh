@@ -29,8 +29,8 @@ fi
 rm -rf "$INSTALL_DIR"
 if [ "$PURGE" -eq 1 ]; then
   rm -rf "$CONFIG_DIR"
-  echo "Removed Remora and its configuration."
+  echo "Removed remora and its configuration."
 else
-  echo "Removed Remora; kept $CONFIG_DIR/config.toml"
+  echo "Removed remora; kept $CONFIG_DIR/config.toml"
 fi
 echo "Native claude configuration was not modified."

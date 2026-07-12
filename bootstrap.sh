@@ -41,7 +41,7 @@ BASE_URL=${REMORA_RELEASE_BASE_URL:-"https://github.com/$REPO/releases/download/
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
-log "Downloading Remora $VERSION"
+log "Downloading remora $VERSION"
 curl --fail --silent --show-error --location \
   "$BASE_URL/$ARCHIVE" -o "$TMP/$ARCHIVE" || fail "archive download failed"
 curl --fail --silent --show-error --location \
@@ -94,6 +94,6 @@ tar -xzf "$TMP/$ARCHIVE" -C "$TMP/extracted"
 SOURCE="$TMP/extracted/remora-cc-$VERSION"
 [ -x "$SOURCE/install.sh" ] || fail "verified archive has an unexpected layout"
 
-log "Installing verified Remora $VERSION"
+log "Installing verified remora $VERSION"
 "$SOURCE/install.sh"
-log "Remora $VERSION installation complete"
+log "remora $VERSION installation complete"

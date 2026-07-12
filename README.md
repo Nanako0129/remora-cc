@@ -26,7 +26,7 @@
 
 ## What it changes
 
-remora launches a child `claude` process with a session-only `--agents` JSON document and a child-only gateway environment. Claude Code officially documents `--agents` as a current-session source that outranks project and user agent files without persisting them.
+remora launches a child `claude` process with a session-only `--agents` JSON document, a session-only orchestration addendum, and a child-only gateway environment. Claude Code officially documents `--agents` as a current-session source that outranks project and user agent files without persisting them. The addendum schedules independent work in the background and reserves foreground agents for immediate blocking dependencies.
 
 | Surface | Native `claude` | `remora` session |
 |---|---|---|
@@ -48,7 +48,7 @@ flowchart LR
     U[Developer] -->|claude| N[Native Claude Code]
     U -->|remora| R[remora launcher]
     R -->|child-only env| G[Anthropic-compatible gateway]
-    R -->|session-only --agents| C[Claude Code runtime]
+    R -->|session-only agents + orchestration| C[Claude Code runtime]
     C -->|orchestration and judgment| SOL[OpenAI Sol]
     C -->|recon and implementation| LUNA[OpenAI Luna]
     C -->|default Sonnet alias| TERRA[OpenAI Terra]
@@ -150,7 +150,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.4/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.5/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -162,7 +162,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.4 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.5 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

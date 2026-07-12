@@ -56,6 +56,9 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("--agents", command)
         payload = json.loads(command[command.index("--agents") + 1])
         self.assertEqual(payload["scout"]["model"], "gpt-5.6-luna")
+        policy = command[command.index("--append-system-prompt") + 1]
+        self.assertIn("run_in_background: true", policy)
+        self.assertIn("Use foreground execution only", policy)
         self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "test-secret")
         self.assertNotIn("CLAUDE_CODE_AUTO_COMPACT_WINDOW", env)
         self.assertNotIn("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", env)
@@ -67,12 +70,30 @@ class RemoraTests(unittest.TestCase):
     def test_explicit_claude_flags_win(self) -> None:
         custom = '{"mine":{"description":"x","prompt":"y"}}'
         command, _ = remora.build_launch(
-            self.config, ["--model", "custom-main", "--agents", custom]
+            self.config,
+            [
+                "--model",
+                "custom-main",
+                "--agents",
+                custom,
+                "--append-system-prompt",
+                "custom policy",
+            ],
         )
         self.assertEqual(command.count("--model"), 1)
         self.assertEqual(command.count("--agents"), 1)
         self.assertIn("custom-main", command)
         self.assertIn(custom, command)
+        self.assertEqual(command.count("--append-system-prompt"), 1)
+        self.assertIn("custom policy", command)
+
+    @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=False)
+    def test_explicit_append_system_prompt_file_wins(self) -> None:
+        command, _ = remora.build_launch(
+            self.config, ["--append-system-prompt-file", "policy.md"]
+        )
+        self.assertNotIn("--append-system-prompt", command)
+        self.assertEqual(command.count("--append-system-prompt-file"), 1)
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
     def test_explicit_settings_fail_closed_instead_of_disabling_routing(self) -> None:

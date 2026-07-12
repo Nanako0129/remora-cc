@@ -2,6 +2,14 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.5 — 2026-07-13
+
+Align delegation scheduling with pilotfish's dependency semantics. remora now appends a child-session-only orchestration policy that sends independent work and parallel fan-out to background agents, while retaining foreground execution only for an immediate blocking dependency. Background work must still be collected before dependent actions or the final response.
+
+The policy is shipped as an auditable file and does not modify native Claude state. An explicit user `--append-system-prompt` or `--append-system-prompt-file` continues to win and suppresses remora's default policy for that session.
+
+This release also adds `doctor --online` capability checks for the experimental Codex active-turn bridge, publishes the source-backed responsibility and acceptance-test report, standardizes the lowercase remora brand across runtime and documentation, and adds bilingual answers for common installation, routing, context, Calico, and security questions.
+
 ## 0.1.4 — 2026-07-12
 
 Fix per-agent GPT-5.6 routing when the user's Claude Code `availableModels` setting excludes gateway model ids. Claude Code 2.1.207 silently inherited the main Sol model in that case even though the `--agents` definitions loaded correctly. remora now supplies a child-only additional settings document containing the configured Sol, Terra, and Luna ids, so subagent validation succeeds without modifying user settings, CLIProxyAPI, or Calico.

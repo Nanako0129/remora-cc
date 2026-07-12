@@ -30,12 +30,13 @@ Collect and report the following without changing anything:
 | Gateway | Ask only whether an Anthropic Messages-compatible gateway exists and what base URL should be configured; if absent, point to `docs/cliproxyapi.md` and keep OAuth as a human handoff |
 | Secret source | Ask whether the user will use an environment variable or an OS credential command; never ask for the secret value |
 | Context mode | Offer `stock` (official Claude binary, 200K/180K, recommended) and `calico` (separately installed patched binary, provider-sized context). Never select or install Calico implicitly |
+| Runtime policy | Read `agents/agents.json` and `agents/orchestration.md` from the same immutable tag; report that the latter is appended only to the remora child session and controls foreground/background delegation |
 
 If the executable path already exists and is not a symlink owned by remora, treat it as a conflict and stop. If a configuration exists, preserve it and report that installation will not edit it.
 
 ## Step 2 — Approval gate
 
-Present one table covering every proposed write, download source, release version, verification method, preserved file, conflict, context-mode choice, and rollback action. Explicitly state that this remora runbook will not write `~/.claude` or replace the native `claude` executable. If the user wants `calico`, disclose that its separate installation replaces the native binary and requires its own source review and approval. Wait for an unambiguous approval before continuing.
+Present one table covering every proposed write, download source, release version, verification method, preserved file, conflict, context-mode choice, session-only orchestration policy, and rollback action. Explicitly state that this remora runbook will not write `~/.claude` or replace the native `claude` executable. If the user wants `calico`, disclose that its separate installation replaces the native binary and requires its own source review and approval. Wait for an unambiguous approval before continuing.
 
 > ⚠️ **No approval means no installation.** Reading this runbook is not permission to mutate the machine.
 
@@ -72,11 +73,12 @@ Run the following checks and report their exit status without printing secrets:
 ```bash
 remora version
 remora agents
+remora dry-run
 remora doctor
 remora doctor --online
 ```
 
-Confirm that `remora doctor` prints every configured GPT model under `PASS routing allowlist`. remora owns the child-only `--settings` argument used for this allowlist; do not add another `--settings` flag to the launch command.
+Confirm that `remora doctor` prints every configured GPT model under `PASS routing allowlist`, and that `remora dry-run` contains the reviewed `--append-system-prompt` policy without exposing the gateway token. remora owns the child-only `--settings` argument used for this allowlist; do not add another `--settings` flag to the launch command.
 
 Compare the post-install `~/.claude` path manifest with the preflight manifest. A difference is a failed isolation check: stop, show the changed paths, and do not claim success. Finish with the installed version, verification method, created and preserved paths, gateway reachability, and uninstall command.
 

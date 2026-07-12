@@ -23,6 +23,7 @@ flowchart TD
 | Integration marker | Sets `REMORA_ACTIVE=1` in the copied environment | Status lines and hooks can identify remora without inspecting credentials or gateway URLs |
 | Settings | Writes no Claude settings; passes configured model ids through child-only `--settings` | Native configuration remains authoritative outside remora while subagent validation can see gateway ids |
 | Agents | Sends one JSON object through `--agents` | Claude Code scopes it to the current session |
+| Orchestration | Appends a dependency-based scheduling policy | Independent work runs in background; only immediate dependencies block in foreground |
 | Authentication | Resolves a remora-specific token, then sets `ANTHROPIC_AUTH_TOKEN` only in the child | The user's Anthropic login is neither read nor replaced on disk |
 | Model defaults | Sets the three documented `ANTHROPIC_DEFAULT_*_MODEL` variables in the child | Internal Claude tiers resolve to gateway model names |
 | Routing allowlist | Adds every configured gateway id to the session's `availableModels` | Claude does not silently inherit the main model for an excluded subagent id |
@@ -47,7 +48,7 @@ sequenceDiagram
     R->>R: Combine role prompts with model map
     R->>S: Read gateway token
     S-->>R: Token on stdout or environment
-    R->>C: exec claude --settings ... --model ... --agents ...
+    R->>C: exec claude --settings ... --model ... --agents ... --append-system-prompt ...
     C->>G: POST /v1/messages
     G-->>C: Anthropic-compatible stream translated from OpenAI
 ```
@@ -55,6 +56,8 @@ sequenceDiagram
 ## Role policy
 
 The split follows capability and token volume rather than file ownership. Read-only fan-out and fully specified mechanical work go to Luna. Work requiring design judgment, independent verification, or security reasoning goes to Sol. Subagents are leaf workers and are denied recursive delegation, preventing an unbounded agent tree.
+
+Foreground versus background is a parent-orchestrator decision, so it cannot be enforced inside a leaf agent prompt. remora therefore appends a child-session-only policy: independent work and parallel fan-out use `run_in_background: true`; foreground execution is reserved for a result required by the main session's very next action when no other useful work can proceed. Explicit user `--append-system-prompt` or `--append-system-prompt-file` arguments replace this default for that session.
 
 | Decision | Chosen behavior | Rejected behavior |
 |---|---|---|

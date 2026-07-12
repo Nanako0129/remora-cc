@@ -26,6 +26,7 @@ remora is a launcher, not a sandbox. Claude Code keeps its normal filesystem and
 | Native Claude OAuth | Never read or changed by remora |
 | Gateway bearer token | Read from a dedicated environment variable or direct credential command; never printed |
 | Agent prompts | Stored as auditable JSON in this repository |
+| Orchestration prompt | Stored as auditable Markdown and appended only to the remora child session |
 | Child environment | Exists only for the launched Claude process tree |
 | Child routing settings | Contains model ids only, is passed as a process argument, and is never persisted |
 | Gateway OAuth files | Outside remora's scope; protect at the gateway host |

@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
+ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
 DEFAULT_CONFIG = Path.home() / ".config" / "remora-cc" / "config.toml"
 MODEL_ENV = {
     "default_opus": "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -135,6 +136,18 @@ def load_agent_definitions() -> dict[str, dict[str, Any]]:
     if not isinstance(data, dict):
         raise RemoraError("agents/agents.json must contain a JSON object")
     return data
+
+
+def load_orchestration_policy() -> str:
+    try:
+        policy = ORCHESTRATION_FILE.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise RemoraError(
+            f"cannot load orchestration policy from {ORCHESTRATION_FILE}: {exc}"
+        ) from exc
+    if not policy:
+        raise RemoraError(f"orchestration policy is empty: {ORCHESTRATION_FILE}")
+    return policy
 
 
 def render_agents(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -409,6 +422,10 @@ def build_launch(
     if not has_option(args, "--agents"):
         compact = json.dumps(render_agents(config), ensure_ascii=False, separators=(",", ":"))
         prefix.extend(["--agents", compact])
+    if not has_option(args, "--append-system-prompt") and not has_option(
+        args, "--append-system-prompt-file"
+    ):
+        prefix.extend(["--append-system-prompt", load_orchestration_policy()])
 
     env = os.environ.copy()
     env["REMORA_ACTIVE"] = "1"

@@ -18,6 +18,7 @@
 - [Configure](#configure)
 - [Use](#use)
 - [Verify isolation](#verify-isolation)
+- [Questions and answers](#questions-and-answers)
 - [Operational notes](#operational-notes)
 - [Operational security](#operational-security)
 - [Uninstall](#uninstall)
@@ -245,6 +246,20 @@ claude --version
 ```
 
 The strongest behavioral check is simply to run both commands. `remora agents` should show the OpenAI map; plain `claude` should retain its original model and authentication.
+
+## Questions and answers
+
+| Question | Answer |
+|---|---|
+| Is remora only a model alias? | No. It supplies a session-scoped agent roster, model allowlist, role-specific effort levels, and gateway environment. The main session, executors, scouts, and verifiers can use different GPT-5.6 tiers. |
+| Does remora replace native Claude Code? | No. `remora` launches a child process; plain `claude` keeps its normal settings and authentication. Calico is a separate, explicit opt-in. |
+| Is Calico required? | No. `stock` mode works with the official Claude binary and its native 200K custom-model behavior. Calico is required only for provider-sized context handling and the optional active-turn identity adapter. |
+| Can CLIProxyAPI run on another computer? | Yes. Use a trusted LAN or VPN address in `proxy.base_url`; keep the management UI and OAuth callback behind loopback plus an SSH tunnel. |
+| Why can `claude --version` say patched while remora reports a missing Calico adapter? | An older Calico build can retain the branded version patch while lacking newer context or active-turn modules. Claude's updater may also replace a patched version. `remora doctor --online` checks the actual capability markers rather than trusting the label. |
+| How do I keep native Claude updates separate from remora's Calico binary? | Install the patched binary under a separate name such as `~/.local/bin/calico-claude`, set `[runtime].claude_binary` to that absolute path, and leave `~/.local/bin/claude` under the official updater. |
+| Does active-turn v1 guarantee unlimited work after quota exhaustion? | No. It preserves the observable native Codex turn contract, but OpenAI still controls fair-use and may terminate a recognized turn. v1 advertises readiness only for one local Codex credential with cooling disabled. |
+| Will `/resume` adopt a newly edited model map? | Not always. Claude can restore the session-scoped agent definitions recorded in the old transcript. Start a new remora session or hand off into one after changing routing. |
+| Can a remora session use claude.ai remote control or connectors? | Gateway mode does not retain the native claude.ai authenticated transport, so those features may be unavailable. Run plain `claude` when they are required. |
 
 ## Operational notes
 

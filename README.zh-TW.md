@@ -18,6 +18,7 @@
 - [設定](#設定)
 - [使用](#使用)
 - [驗證原生 Claude 未受影響](#驗證原生-claude-未受影響)
+- [常見問答](#常見問答)
 - [常見狀況](#常見狀況)
 - [執行期安全](#執行期安全)
 - [移除](#移除)
@@ -235,6 +236,20 @@ claude --version
 ```
 
 第一個指令應顯示 OpenAI 分流；第二個仍是原生 Claude Code。若要做檔案級驗證，可在安裝前後對 `~/.claude` 建立 SHA-256 manifest 比較。
+
+## 常見問答
+
+| 問題 | 回答 |
+|---|---|
+| remora 只是 model alias 嗎？ | 不是。它會在單一 session 注入 agent roster、model allowlist、角色 effort 與 gateway environment，因此 main、executor、scout、verifier 可以使用不同 GPT-5.6 tier。 |
+| remora 會取代原生 Claude Code 嗎？ | 不會。`remora` 只啟動 child process；直接執行 `claude` 仍使用原本的設定與登入。Calico 也是另外明確選用的元件。 |
+| 一定要裝 Calico 嗎？ | 不必。`stock` 模式可搭配官方 Claude binary，依原生 custom model 的 200K 行為運作。只有 provider-sized context 與可選的 active-turn identity adapter 需要 Calico。 |
+| CLIProxyAPI 可以放在另一台電腦嗎？ | 可以。`proxy.base_url` 使用可信任 LAN／VPN 位址；management UI 與 OAuth callback 應維持 loopback，再透過 SSH tunnel 存取。 |
+| 為什麼 `claude --version` 顯示 patched，remora 卻說缺少 Calico adapter？ | 舊 Calico build 可能仍有品牌 patch，但不含較新的 context／active-turn modules；Claude updater 也可能替換 patched version。`remora doctor --online` 會檢查真正的 capability marker，不只相信名稱。 |
+| 如何讓原生 Claude 更新與 remora 的 Calico binary 互不影響？ | 把 patched binary 另存為 `~/.local/bin/calico-claude`，將 `[runtime].claude_binary` 設成其絕對路徑，並讓 `~/.local/bin/claude` 繼續交給官方 updater。 |
+| Active-turn v1 能保證 quota 用完後無限執行嗎？ | 不能。它只保存可觀察到的 native Codex turn contract；OpenAI 仍會套用 fair-use 並可終止 turn。v1 也只在單一 local Codex credential 且關閉 cooling 時廣告 ready。 |
+| `/resume` 會套用剛修改的 model map 嗎？ | 不一定。Claude 可能從舊 transcript 恢復當時的 session-scoped agent definitions。修改 routing 後應開新 remora session，或 handoff 到新 session。 |
+| remora session 能使用 claude.ai remote control 或 connectors 嗎？ | Gateway mode 不會保留原生 claude.ai authenticated transport，因此相關功能可能不可用；需要時請直接執行 `claude`。 |
 
 ## 常見狀況
 

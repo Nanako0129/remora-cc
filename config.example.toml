@@ -1,0 +1,36 @@
+version = 1
+
+[proxy]
+base_url = "http://127.0.0.1:8317"
+auth_token_env = "REMORA_AUTH_TOKEN"
+# Prefer an OS credential store for daily use. This command is executed directly,
+# without a shell, and its stdout becomes ANTHROPIC_AUTH_TOKEN for the child only.
+auth_token_command = []
+
+[models]
+main = "gpt-5.6-sol"
+default_opus = "gpt-5.6-sol"
+default_sonnet = "gpt-5.6-terra"
+default_haiku = "gpt-5.6-luna"
+
+[agent_models]
+Explore = "gpt-5.6-luna"
+scout = "gpt-5.6-luna"
+mech-executor = "gpt-5.6-luna"
+executor = "gpt-5.6-luna"
+verifier = "gpt-5.6-sol"
+security-executor = "gpt-5.6-sol"
+
+[agent_effort]
+Explore = "low"
+scout = "low"
+mech-executor = "medium"
+executor = "max"
+verifier = "high"
+security-executor = "max"
+
+[runtime]
+claude_binary = "claude"
+max_tool_use_concurrency = 3
+enable_tool_search = false
+clear_subagent_model_override = true

@@ -59,12 +59,22 @@ class RemoraTests(unittest.TestCase):
         policy = command[command.index("--append-system-prompt") + 1]
         self.assertIn("run_in_background: true", policy)
         self.assertIn("Use foreground execution only", policy)
+        self.assertIn("omit the `model` argument entirely", policy)
+        self.assertIn("only for a truly ad-hoc agent", policy)
         self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "test-secret")
         self.assertNotIn("CLAUDE_CODE_AUTO_COMPACT_WINDOW", env)
         self.assertNotIn("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", env)
         self.assertNotIn("CALICO_MODEL_CONTEXT_WINDOWS", env)
         self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", env)
         self.assertEqual(os.environ["CLAUDE_CODE_SUBAGENT_MODEL"], "wrong")
+
+    def test_named_roles_are_the_only_source_of_their_models(self) -> None:
+        policy = remora.load_orchestration_policy()
+        for role in remora.load_agent_definitions():
+            self.assertIn(f"`{role}`", policy)
+        self.assertIn("existing named role", policy)
+        self.assertIn("invocation-level model overrides the role definition", policy)
+        self.assertIn("ad-hoc agent that has no named role definition", policy)
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=False)
     def test_explicit_claude_flags_win(self) -> None:

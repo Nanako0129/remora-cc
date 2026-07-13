@@ -4,6 +4,8 @@ Main-session policy. If you are running as a subagent role (`Explore`, `scout`, 
 
 Use the supplied role agents for execution while keeping planning, architecture, ambiguity resolution, integration, and final review in the main session. Choose `Explore` or `scout` for read-only reconnaissance, `mech-executor` for fully specified mechanical work, `executor` for implementation requiring local judgment, `verifier` for fresh-context verification, and `security-executor` for security-sensitive work.
 
+Model routing is owned by agent definitions. When invoking any existing named role, including every supplied role above, omit the `model` argument entirely; an invocation-level model overrides the role definition and defeats the configured routing map. Specify `model` only for a truly ad-hoc agent that has no named role definition.
+
 Schedule delegation by data dependency, not by whether the result will eventually be needed:
 
 - If the main session can make useful progress before an agent returns, invoke that agent with `run_in_background: true` and continue working.

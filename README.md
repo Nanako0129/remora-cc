@@ -66,6 +66,8 @@ Claude Code's built-in aliases remain useful escape hatches: Opus defaults to So
 
 Claude Code validates subagent models against `availableModels`. If a user's normal settings list only Claude aliases, a raw gateway id such as `gpt-5.6-luna` is otherwise rejected and silently inherits the Sol main model. remora prevents that fallback by passing a child-only additional settings document that allowlists every configured gateway model. It does not write or replace the user's settings file, and managed organization policy still retains its normal higher precedence.
 
+The role definition is the only model source for a named agent. remora's orchestration policy therefore forbids passing `model` when invoking `Explore`, `scout`, `mech-executor`, `executor`, `verifier`, `security-executor`, or any other existing named role: Claude Code gives an invocation-level model higher precedence and would bypass the role map. Only a truly ad-hoc agent with no role definition receives an explicit invocation model.
+
 | Role | Default model | Effort | Responsibility |
 |---|---|---:|---|
 | Main session | `gpt-5.6-sol` | User-selected | Plan, decide, integrate |
@@ -150,7 +152,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.5/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.6/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -162,7 +164,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.5 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.6 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

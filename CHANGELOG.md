@@ -2,6 +2,12 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.6 — 2026-07-13
+
+Fix named-role model routing at the Agent invocation boundary. The child-session orchestration policy now requires every existing named role to be invoked without a `model` argument, leaving its session-scoped `--agents` definition as the sole model source. This prevents a per-call alias such as `sonnet` from overriding a configured Luna executor with Terra, or otherwise bypassing the role map.
+
+Only truly ad-hoc agents with no named role definition may specify `model` explicitly. Regression coverage verifies both halves of the contract while preserving remora's existing session isolation, model allowlist, and background-delegation behavior.
+
 ## 0.1.5 — 2026-07-13
 
 Align delegation scheduling with pilotfish's dependency semantics. remora now appends a child-session-only orchestration policy that sends independent work and parallel fan-out to background agents, while retaining foreground execution only for an immediate blocking dependency. Background work must still be collected before dependent actions or the final response.

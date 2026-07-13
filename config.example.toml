@@ -20,6 +20,11 @@ mode = "stock"
 stock_window = 200000
 discovery = true
 fallback_window = 372000
+# A fresh Codex runtime cache is authoritative. This value is the safe ceiling
+# when ~/.codex/models_cache.json is missing, stale, or incomplete.
+codex_fallback_window = 272000
+codex_cache_ttl_seconds = 300
+# codex_models_cache = "~/.codex/models_cache.json"
 effective_window_percent = 95
 # Used only by mode = "calico". Stock mode leaves Claude's compact pipeline untouched.
 auto_compact_percent = 90

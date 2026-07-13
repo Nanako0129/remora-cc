@@ -206,7 +206,7 @@ remora dry-run
 
 ## Context-window alignment
 
-Do not copy the public OpenAI API context number into CLIProxyAPI metadata. The public GPT-5.6 API documents 1.05M, while the Codex Plus, Pro, and Team OAuth catalogs currently report 372K. The latter is the operational ceiling for this route.
+Do not copy the public OpenAI API context number into CLIProxyAPI metadata. The public GPT-5.6 API documents 1.05M, while CLIProxyAPI currently reports 372K for the Codex OAuth route. That gateway value is only one ceiling: an authoritative Codex runtime-catalog hot update changed Sol, Terra, and Luna to 272K on 2026-07-13.
 
 Stock CLIProxyAPI exposes that value without any server modification:
 
@@ -219,18 +219,22 @@ curl -fsS \
 
 remora performs the lookup read-only, but its safe default follows stock Claude Code's 200K limit for unknown custom model ids. In `stock` mode it does not inject context or compact overrides; Claude's native output reserve and precompute policy remain authoritative. CLIProxyAPI needs no change or restart.
 
-The optional `calico` mode requires a verified Calico Claude binary. It passes an exact model/window map from the same catalog into Calico's dormant adapter. With a 372K provider window, status-line consumers see 353.4K usable context and compaction begins near 334.8K. remora refuses to launch this mode if the binary does not contain the adapter marker.
+The optional `calico` mode requires a verified Calico Claude binary. It takes the smaller value from the gateway catalog and a fresh local Codex runtime cache for every configured model, then passes that exact map into Calico's dormant adapter. The current 272K client window gives status-line consumers 258.4K usable context and begins compaction at 244.8K. A missing, older-than-five-minutes, or incomplete Codex cache falls back to 272K. A later fresh 372K runtime catalog restores 372K automatically. remora refuses to launch this mode if the binary does not contain the adapter marker.
 
 | Source | Meaning |
 |---|---|
-| Gateway `context_window` | Preferred operational ceiling |
+| Gateway `context_window` | Gateway-advertised ceiling; retained for diagnostics |
+| Fresh `~/.codex/models_cache.json` | Authoritative Codex runtime ceiling; read-only, metadata only |
 | `[context].mode = "stock"` | Stock-safe 200K client behavior; default |
 | `[context].mode = "calico"` | Explicit opt-in to the verified custom-context adapter |
 | `[context].stock_window` | Stock Claude Code custom-model window, normally 200K |
 | `[context].fallback_window` | Conservative value used when catalog lookup is unavailable or incomplete |
+| `[context].codex_fallback_window` | Safe Codex ceiling when its runtime cache cannot be trusted; currently 272K |
+| `[context].codex_cache_ttl_seconds` | Freshness limit for the Codex runtime cache; matches Codex's 300-second TTL |
+| `[context].codex_models_cache` | Optional path override; otherwise uses `$CODEX_HOME/models_cache.json` or `~/.codex/models_cache.json` |
 | `[context].effective_window_percent` | Diagnostic effective-input ratio; Codex defaults to 95% |
 | `[context].auto_compact_percent` | Child auto-compaction ratio; Codex defaults to 90% |
-| Existing Claude auto-compact environment variables | Explicit user overrides; take precedence |
+| Existing Claude auto-compact environment variables | Explicit user overrides, capped to the Codex client ceiling in Calico mode |
 
 ## Experimental active-turn bridge
 

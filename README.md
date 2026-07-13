@@ -80,16 +80,16 @@ The role definition is the only model source for a named agent. remora's orchest
 
 ### Context safety
 
-OpenAI's public GPT-5.6 API advertises a 1.05M context window, but CLIProxyAPI's Codex OAuth catalog currently reports 372K for Sol, Terra, and Luna. remora treats the gateway catalog as the operational limit instead of assuming that the public API limit applies to a subscription/OAuth route.
+OpenAI's public GPT-5.6 API advertises a 1.05M context window, and CLIProxyAPI's Codex OAuth catalog currently reports 372K for Sol, Terra, and Luna. The Codex runtime catalog is a separate, later authority: a 2026-07-13 hot update changed those models to 272K even though the bundled Codex catalog and CLIProxyAPI metadata still said 372K. remora therefore never assumes that the public API or gateway number is the client ceiling.
 
 Claude Code assigns unknown custom model ids a 200K context window. remora therefore defaults to `stock` mode: a truthful 200K client window with Claude's native compact pipeline left untouched. Native Claude may compact before the displayed limit because it separately reserves output tokens and precomputes summaries; remora does not report a made-up exact trigger for this mode.
 
-Users who explicitly install [Calico Claude](https://github.com/Nanako0129/calico-claude) can select `calico` mode. remora then reads the gateway catalog, supplies an exact model/window map to Calico's validated context adapter, displays 95% as usable context, and compacts at 90% of the raw window. A 372K provider window therefore appears as 353.4K usable context and compacts near 334.8K. Malformed maps, unknown ids, and missing Calico patches fail closed.
+Users who explicitly install [Calico Claude](https://github.com/Nanako0129/calico-claude) can select `calico` mode. remora reads both the gateway catalog and a fresh Codex `models_cache.json`, then uses the smaller per-model value. If the Codex cache is unavailable, stale, or incomplete, a configurable 272K safe fallback becomes the ceiling. The current 272K runtime window therefore appears as 258.4K usable context and compacts at 244.8K, matching Codex's 95% display and 90% compact defaults. If a later fresh runtime catalog restores 372K, remora restores 372K too; the fallback is not a permanent pin. Malformed maps, unknown ids, and missing Calico patches fail closed.
 
 | Mode | Claude binary | Display window | Compact trigger | Default |
 |---|---|---:|---:|---|
 | `stock` | Official native Claude Code | 200K | Claude-managed | Yes |
-| `calico` | Verified Calico release | 95% of provider | 90% of provider | Explicit opt-in |
+| `calico` | Verified Calico release | 95% of the smaller gateway/Codex window | 90% of the smaller gateway/Codex window | Explicit opt-in |
 
 ```toml
 [context]
@@ -97,6 +97,8 @@ mode = "stock"
 stock_window = 200000
 discovery = true
 fallback_window = 372000
+codex_fallback_window = 272000
+codex_cache_ttl_seconds = 300
 effective_window_percent = 95
 auto_compact_percent = 90
 ```
@@ -152,7 +154,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.6/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.7/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -164,7 +166,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.6 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.7 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```
@@ -255,7 +257,7 @@ The strongest behavioral check is simply to run both commands. `remora agents` s
 |---|---|
 | Is remora only a model alias? | No. It supplies a session-scoped agent roster, model allowlist, role-specific effort levels, and gateway environment. The main session, executors, scouts, and verifiers can use different GPT-5.6 tiers. |
 | Does remora replace native Claude Code? | No. `remora` launches a child process; plain `claude` keeps its normal settings and authentication. Calico is a separate, explicit opt-in. |
-| Is Calico required? | No. `stock` mode works with the official Claude binary and its native 200K custom-model behavior. Calico is required only for provider-sized context handling and the optional active-turn identity adapter. |
+| Is Calico required? | No. `stock` mode works with the official Claude binary and its native 200K custom-model behavior. Calico is required only for Codex-runtime-sized context handling and the optional active-turn identity adapter. |
 | Can CLIProxyAPI run on another computer? | Yes. Use a trusted LAN or VPN address in `proxy.base_url`; keep the management UI and OAuth callback behind loopback plus an SSH tunnel. |
 | Why can `claude --version` say patched while remora reports a missing Calico adapter? | An older Calico build can retain the branded version patch while lacking newer context or active-turn modules. Claude's updater may also replace a patched version. `remora doctor --online` checks the actual capability markers rather than trusting the label. |
 | How do I keep native Claude updates separate from remora's Calico binary? | Install the patched binary under a separate name such as `~/.local/bin/calico-claude`, set `[runtime].claude_binary` to that absolute path, and leave `~/.local/bin/claude` under the official updater. |
@@ -273,7 +275,7 @@ The strongest behavioral check is simply to run both commands. `remora agents` s
 | `All credentials ... are cooling down` | The gateway locally suspended the only credential/model after an upstream 429 | Wait for reset, add failover credentials, lower concurrency, or restart only as a last-resort state reset |
 | `Codex active-turn bridge: DEGRADED` | Calico, gateway capability, or the supported one-credential topology is absent | Active work may stop at a quota boundary; follow the experimental gateway runbook or treat stock behavior as expected |
 | Models work but names differ | The gateway exposes aliases different from this example | Update `[models]` and `[agent_models]` |
-| `Your input exceeds the context window` | The selected client mode and provider ceiling disagree | Run `remora doctor --online`; use the 200K `stock` default or install Calico before selecting `calico` |
+| `Your input exceeds the context window` | The gateway metadata, Codex runtime catalog, and selected client mode disagree | Run Codex once to refresh `~/.codex/models_cache.json`, then run `remora doctor --online`; current Calico output should show `client_window=272000` |
 | Native Claude also uses the gateway | Gateway variables were exported globally in the shell | Remove global `ANTHROPIC_*` exports; let remora set them for its child |
 | A role is missing | An explicit `--agents` flag replaced remora's dynamic map | Remove that flag or merge the role into your supplied JSON |
 | `--settings cannot be combined` | A second additional-settings source would replace remora's routing allowlist | Put persistent settings in the normal Claude settings files and let remora own the session-only `--settings` argument |

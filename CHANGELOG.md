@@ -2,6 +2,12 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.7 — 2026-07-13
+
+Harden Calico context handling against Codex runtime-catalog hot updates. CLIProxyAPI and the bundled Codex catalog can temporarily retain an older 372K value after the ChatGPT-authenticated runtime catalog changes GPT-5.6 Sol, Terra, and Luna to 272K. remora now keeps the gateway value as a diagnostic ceiling, reads a fresh local Codex `models_cache.json` as the runtime ceiling, and maps the smaller per-model value into Calico. Missing, stale, or incomplete Codex metadata falls back safely to 272K, while a later fresh 372K runtime catalog automatically restores 372K instead of being permanently pinned.
+
+The current runtime defaults match Codex exactly: 272K raw, 258.4K effective at 95%, and 244.8K auto-compact at 90%. Explicit Calico compact-window overrides cannot exceed that client ceiling. `doctor` reports the gateway, Codex runtime, and final Calico client values separately.
+
 ## 0.1.6 — 2026-07-13
 
 Fix named-role model routing at the Agent invocation boundary. The child-session orchestration policy now requires every existing named role to be invoked without a `model` argument, leaving its session-scoped `--agents` definition as the sole model source. This prevents a per-call alias such as `sonnet` from overriding a configured Luna executor with Terra, or otherwise bypassing the role map.

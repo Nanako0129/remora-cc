@@ -12,11 +12,12 @@ import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.6"
+VERSION = "0.1.7"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
@@ -29,6 +30,8 @@ MODEL_ENV = {
 DEFAULT_CONTEXT_MODE = "stock"
 DEFAULT_STOCK_CONTEXT_WINDOW = 200_000
 DEFAULT_PROVIDER_CONTEXT_WINDOW = 372_000
+DEFAULT_CODEX_CONTEXT_WINDOW = 272_000
+DEFAULT_CODEX_CACHE_TTL_SECONDS = 300
 DEFAULT_EFFECTIVE_CONTEXT_PERCENT = 95
 DEFAULT_AUTO_COMPACT_PERCENT = 90
 AUTO_COMPACT_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
@@ -93,8 +96,20 @@ def validate_config(config: dict[str, Any]) -> None:
     discovery = context.get("discovery", True)
     if not isinstance(discovery, bool):
         raise RemoraError("context.discovery must be true or false")
+    codex_cache = context.get("codex_models_cache", "")
+    if not isinstance(codex_cache, str):
+        raise RemoraError("context.codex_models_cache must be a path string")
     fallback_window = context_integer(
         context, "fallback_window", DEFAULT_PROVIDER_CONTEXT_WINDOW, minimum=1
+    )
+    context_integer(
+        context, "codex_fallback_window", DEFAULT_CODEX_CONTEXT_WINDOW, minimum=1
+    )
+    context_integer(
+        context,
+        "codex_cache_ttl_seconds",
+        DEFAULT_CODEX_CACHE_TTL_SECONDS,
+        minimum=0,
     )
     context_integer(
         context, "stock_window", DEFAULT_STOCK_CONTEXT_WINDOW, minimum=1
@@ -232,6 +247,64 @@ def fetch_gateway_context_windows(config: dict[str, Any], token: str) -> dict[st
     return windows
 
 
+def codex_models_cache_path(context: dict[str, Any]) -> Path:
+    configured = str(context.get("codex_models_cache", "")).strip()
+    if configured:
+        return Path(configured).expanduser()
+    codex_home = os.environ.get("CODEX_HOME", "").strip()
+    home = Path(codex_home).expanduser() if codex_home else Path.home() / ".codex"
+    return home / "models_cache.json"
+
+
+def fetch_codex_context_windows(config: dict[str, Any]) -> dict[str, int]:
+    context = config.get("context", {})
+    path = codex_models_cache_path(context)
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError as exc:
+        raise RemoraError(f"Codex model cache not found: {path}") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RemoraError(f"cannot read Codex model cache {path}: {exc}") from exc
+
+    fetched_at = payload.get("fetched_at")
+    if not isinstance(fetched_at, str) or not fetched_at.strip():
+        raise RemoraError(f"Codex model cache has no fetched_at timestamp: {path}")
+    try:
+        fetched = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RemoraError(f"Codex model cache has an invalid fetched_at timestamp: {path}") from exc
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=timezone.utc)
+    ttl = context_integer(
+        context,
+        "codex_cache_ttl_seconds",
+        DEFAULT_CODEX_CACHE_TTL_SECONDS,
+        minimum=0,
+    )
+    age = max(
+        0.0,
+        (datetime.now(timezone.utc) - fetched.astimezone(timezone.utc)).total_seconds(),
+    )
+    if age > ttl:
+        raise RemoraError(
+            f"Codex model cache is stale ({int(age)}s old, limit {ttl}s): {path}"
+        )
+
+    rows = payload.get("models", [])
+    if not isinstance(rows, list):
+        raise RemoraError(f"Codex model cache has no model list: {path}")
+    windows: dict[str, int] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("slug") or row.get("id") or "").strip()
+        value = row.get("context_window")
+        if name and isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            windows[name] = value
+    return windows
+
+
 def resolve_context_policy(
     config: dict[str, Any], *, token: str = "", online: bool = False
 ) -> dict[str, Any]:
@@ -266,6 +339,9 @@ def resolve_context_policy(
     fallback_window = context_integer(
         context, "fallback_window", DEFAULT_PROVIDER_CONTEXT_WINDOW, minimum=1
     )
+    codex_fallback_window = context_integer(
+        context, "codex_fallback_window", DEFAULT_CODEX_CONTEXT_WINDOW, minimum=1
+    )
     effective_percent = context_percentage(
         context, "effective_window_percent", DEFAULT_EFFECTIVE_CONTEXT_PERCENT
     )
@@ -274,31 +350,66 @@ def resolve_context_policy(
     )
     discovery = context.get("discovery", True)
     provider_window = fallback_window
-    source = "fallback"
+    codex_window = codex_fallback_window
+    source_parts = ["fallback"]
     warnings: list[str] = []
-    selected: dict[str, int] = {}
+    selected_provider: dict[str, int] = {}
+    selected_codex: dict[str, int] = {}
 
     if online and discovery and token:
         try:
             available = fetch_gateway_context_windows(config, token)
             required = configured_model_names(config)
-            selected = {name: available[name] for name in required if name in available}
-            missing = sorted(required - selected.keys())
+            selected_provider = {name: available[name] for name in required if name in available}
+            missing = sorted(required - selected_provider.keys())
             candidates = [fallback_window] if missing else []
-            candidates.extend(selected.values())
+            candidates.extend(selected_provider.values())
             if candidates:
                 provider_window = min(candidates)
-                source = "gateway" if not missing else "gateway+fallback"
+                source_parts[0] = "gateway" if not missing else "gateway+fallback"
             if missing:
-                warnings.append("catalog missing configured models: " + ", ".join(missing))
-            elif not selected:
-                warnings.append("catalog contains no configured model context metadata")
+                warnings.append("gateway catalog missing configured models: " + ", ".join(missing))
+            elif not selected_provider:
+                warnings.append("gateway catalog contains no configured model context metadata")
         except (OSError, ValueError, json.JSONDecodeError, RemoraError) as exc:
-            warnings.append(f"context discovery failed: {exc}")
+            warnings.append(f"gateway context discovery failed: {exc}")
 
-    client_window = provider_window if mode == "calico" else stock_window
+    if mode == "calico" and discovery:
+        try:
+            available_codex = fetch_codex_context_windows(config)
+            required = configured_model_names(config)
+            selected_codex = {
+                name: available_codex[name] for name in required if name in available_codex
+            }
+            missing_codex = sorted(required - selected_codex.keys())
+            codex_candidates = [codex_fallback_window] if missing_codex else []
+            codex_candidates.extend(selected_codex.values())
+            if codex_candidates:
+                codex_window = min(codex_candidates)
+                source_parts.append(
+                    "codex-cache" if not missing_codex else "codex-cache+fallback"
+                )
+            if missing_codex:
+                warnings.append(
+                    "Codex runtime catalog missing configured models: "
+                    + ", ".join(missing_codex)
+                )
+            elif not selected_codex:
+                warnings.append("Codex runtime catalog contains no configured model metadata")
+        except (OSError, ValueError, json.JSONDecodeError, RemoraError) as exc:
+            source_parts.append("codex-fallback")
+            warnings.append(f"Codex runtime discovery unavailable: {exc}")
+
+    client_window = min(provider_window, codex_window) if mode == "calico" else stock_window
+    if mode == "calico" and provider_window > codex_window:
+        warnings.append(
+            f"gateway window {provider_window} exceeds Codex runtime ceiling {codex_window}; "
+            "Calico is capped to the Codex value"
+        )
     auto_compact_window = (
-        explicit_window or provider_window
+        min(explicit_window, client_window)
+        if mode == "calico" and explicit_window is not None
+        else client_window
         if mode == "calico"
         else explicit_window
     )
@@ -308,7 +419,7 @@ def resolve_context_policy(
         else explicit_percent
     )
     effective_window = (
-        provider_window * effective_percent // 100
+        client_window * effective_percent // 100
         if mode == "calico"
         else stock_window
     )
@@ -318,11 +429,11 @@ def resolve_context_policy(
         else None
     )
     if explicit_window is not None or explicit_percent is not None:
-        source += "+environment"
-    if auto_compact_window is not None and auto_compact_window > provider_window:
+        source_parts.append("environment")
+    if mode == "calico" and explicit_window is not None and explicit_window > client_window:
         warnings.append(
-            f"explicit {AUTO_COMPACT_ENV}={auto_compact_window} exceeds detected "
-            f"gateway ceiling {provider_window}"
+            f"explicit {AUTO_COMPACT_ENV}={explicit_window} exceeds Codex client "
+            f"ceiling {client_window} and was capped"
         )
     if mode == "stock" and auto_compact_window is not None and auto_compact_window > stock_window:
         warnings.append(
@@ -333,19 +444,32 @@ def resolve_context_policy(
         warnings.append(
             f"compact trigger {compact_trigger} exceeds effective context {effective_window}"
         )
+    required_models = configured_model_names(config)
+    client_model_windows = {
+        name: min(
+            selected_provider.get(name, fallback_window),
+            selected_codex.get(name, codex_fallback_window),
+        )
+        for name in required_models
+    }
     return {
         "auto_compact_window": auto_compact_window,
         "auto_compact_percent": auto_compact_percent,
         "compact_trigger": compact_trigger,
         "mode": mode,
         "client_window": client_window,
+        "codex_window": codex_window,
+        "codex_fallback_window": codex_fallback_window,
         "stock_window": stock_window,
         "provider_window": provider_window,
         "effective_window": effective_window,
         "effective_window_percent": effective_percent,
-        "source": source,
+        "source": "+".join(source_parts),
         "warning": "; ".join(warnings),
-        "model_windows": selected,
+        "model_windows": client_model_windows,
+        "provider_model_windows": selected_provider,
+        "codex_model_windows": selected_codex,
+        "codex_models_cache": str(codex_models_cache_path(context)),
     }
 
 
@@ -458,7 +582,7 @@ def build_launch(
     if context_policy["auto_compact_percent"] is not None:
         env[AUTO_COMPACT_PERCENT_ENV] = str(context_policy["auto_compact_percent"])
     if context_policy["mode"] == "calico":
-        fallback = context_policy["provider_window"]
+        fallback = context_policy["client_window"]
         windows = {
             name: context_policy["model_windows"].get(name, fallback)
             for name in configured_model_names(config)
@@ -554,14 +678,20 @@ def doctor(config: dict[str, Any], online: bool) -> int:
         f"mode={context_policy['mode']} "
         f"source={context_policy['source']} "
         f"provider_window={provider} "
+        f"codex_window={context_policy['codex_window']} "
         f"client_window={context_policy['client_window']} "
         f"effective_window={context_policy['effective_window']} "
         f"auto_compact_window={context_policy['auto_compact_window']} "
         f"auto_compact_percent={context_policy['auto_compact_percent']} "
         f"compact_policy={compact_policy}"
     )
-    for name, window in sorted(context_policy["model_windows"].items()):
-        print(f"PASS model context: {name}={window}")
+    for name, window in sorted(context_policy["provider_model_windows"].items()):
+        print(f"PASS gateway model context: {name}={window}")
+    for name, window in sorted(context_policy["codex_model_windows"].items()):
+        print(f"PASS Codex runtime model context: {name}={window}")
+    if context_policy["mode"] == "calico":
+        for name, window in sorted(context_policy["model_windows"].items()):
+            print(f"PASS Calico client model context: {name}={window}")
     if context_policy["warning"]:
         print(f"WARN context policy: {context_policy['warning']}")
 

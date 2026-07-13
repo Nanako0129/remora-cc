@@ -184,27 +184,161 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("discovery failed", policy["warning"])
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
-    def test_calico_mode_uses_provider_window_and_exports_exact_map(self) -> None:
+    def test_calico_mode_caps_gateway_to_codex_runtime_and_exports_exact_map(self) -> None:
         config = json.loads(json.dumps(self.config))
         config["context"]["mode"] = "calico"
-        windows = {
+        gateway_windows = {
             "gpt-5.6-sol": 372000,
             "gpt-5.6-terra": 372000,
             "gpt-5.6-luna": 372000,
         }
+        codex_windows = {
+            "gpt-5.6-sol": 272000,
+            "gpt-5.6-terra": 272000,
+            "gpt-5.6-luna": 272000,
+        }
         with (
             mock.patch.object(
-                remora, "fetch_gateway_context_windows", return_value=windows
+                remora, "fetch_gateway_context_windows", return_value=gateway_windows
+            ),
+            mock.patch.object(
+                remora, "fetch_codex_context_windows", return_value=codex_windows
             ),
             mock.patch.object(remora, "calico_context_supported", return_value=True),
         ):
             _, env = remora.build_launch(config, [])
-        self.assertEqual(env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"], "372000")
+        self.assertEqual(env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"], "272000")
         self.assertEqual(env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"], "90")
         self.assertEqual(env["CALICO_CONTEXT_DISPLAY_PERCENT"], "95")
         self.assertEqual(
-            json.loads(env["CALICO_MODEL_CONTEXT_WINDOWS"]), windows
+            json.loads(env["CALICO_MODEL_CONTEXT_WINDOWS"]), codex_windows
         )
+
+    def test_calico_context_policy_matches_current_codex_runtime_defaults(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        config["context"]["mode"] = "calico"
+        gateway_windows = {
+            name: 372000 for name in remora.configured_model_names(config)
+        }
+        codex_windows = {
+            name: 272000 for name in remora.configured_model_names(config)
+        }
+        with (
+            mock.patch.object(
+                remora, "fetch_gateway_context_windows", return_value=gateway_windows
+            ),
+            mock.patch.object(
+                remora, "fetch_codex_context_windows", return_value=codex_windows
+            ),
+        ):
+            policy = remora.resolve_context_policy(
+                config, token="hidden", online=True
+            )
+        self.assertEqual(policy["source"], "gateway+codex-cache")
+        self.assertEqual(policy["provider_window"], 372000)
+        self.assertEqual(policy["codex_window"], 272000)
+        self.assertEqual(policy["client_window"], 272000)
+        self.assertEqual(policy["effective_window"], 258400)
+        self.assertEqual(policy["compact_trigger"], 244800)
+        self.assertIn("capped to the Codex value", policy["warning"])
+
+    def test_calico_context_policy_restores_larger_fresh_runtime_window(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        config["context"]["mode"] = "calico"
+        restored_windows = {
+            name: 372000 for name in remora.configured_model_names(config)
+        }
+        with (
+            mock.patch.object(
+                remora,
+                "fetch_gateway_context_windows",
+                return_value=restored_windows,
+            ),
+            mock.patch.object(
+                remora,
+                "fetch_codex_context_windows",
+                return_value=restored_windows,
+            ),
+        ):
+            policy = remora.resolve_context_policy(
+                config, token="hidden", online=True
+            )
+        self.assertEqual(policy["provider_window"], 372000)
+        self.assertEqual(policy["codex_window"], 372000)
+        self.assertEqual(policy["client_window"], 372000)
+        self.assertEqual(policy["effective_window"], 353400)
+        self.assertEqual(policy["compact_trigger"], 334800)
+        self.assertNotIn("capped to the Codex value", policy["warning"])
+
+    def test_codex_context_cache_loader_rejects_stale_metadata(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "models_cache.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "fetched_at": "2020-01-01T00:00:00Z",
+                        "models": [
+                            {"slug": "gpt-5.6-sol", "context_window": 999000}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config["context"]["codex_models_cache"] = str(path)
+            with self.assertRaisesRegex(remora.RemoraError, "is stale"):
+                remora.fetch_codex_context_windows(config)
+
+    def test_codex_context_cache_loader_reads_fresh_metadata(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "models_cache.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "fetched_at": remora.datetime.now(
+                            remora.timezone.utc
+                        ).isoformat(),
+                        "models": [
+                            {"slug": "gpt-5.6-sol", "context_window": 272000},
+                            {"slug": "ignored", "context_window": "272000"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config["context"]["codex_models_cache"] = str(path)
+            self.assertEqual(
+                remora.fetch_codex_context_windows(config),
+                {"gpt-5.6-sol": 272000},
+            )
+
+    @mock.patch.dict(
+        os.environ, {"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "400000"}, clear=True
+    )
+    def test_calico_caps_explicit_compact_window_to_codex_ceiling(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        config["context"]["mode"] = "calico"
+        gateway_windows = {
+            name: 372000 for name in remora.configured_model_names(config)
+        }
+        codex_windows = {
+            name: 272000 for name in remora.configured_model_names(config)
+        }
+        with (
+            mock.patch.object(
+                remora, "fetch_gateway_context_windows", return_value=gateway_windows
+            ),
+            mock.patch.object(
+                remora, "fetch_codex_context_windows", return_value=codex_windows
+            ),
+        ):
+            policy = remora.resolve_context_policy(
+                config, token="hidden", online=True
+            )
+        self.assertEqual(policy["auto_compact_window"], 272000)
+        self.assertEqual(policy["compact_trigger"], 244800)
+        self.assertIn("ceiling 272000 and was capped", policy["warning"])
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
     def test_calico_mode_fails_closed_without_context_patch(self) -> None:
@@ -299,7 +433,7 @@ class RemoraTests(unittest.TestCase):
         },
     )
     @mock.patch.object(remora.urllib.request, "urlopen")
-    def test_doctor_warns_when_override_exceeds_gateway(
+    def test_doctor_warns_when_override_exceeds_stock_window(
         self,
         urlopen: mock.Mock,
         _fetch: mock.Mock,
@@ -313,12 +447,22 @@ class RemoraTests(unittest.TestCase):
         with redirect_stdout(output):
             result = remora.doctor(self.config, online=True)
         self.assertEqual(result, 0)
-        self.assertIn("exceeds detected gateway ceiling 372000", output.getvalue())
+        self.assertIn("exceeds stock Claude Code custom-model window 200000", output.getvalue())
 
     def test_invalid_context_config_is_rejected(self) -> None:
         config = json.loads(json.dumps(self.config))
         config["context"]["auto_compact_percent"] = 96
         with self.assertRaisesRegex(remora.RemoraError, "must not exceed"):
+            remora.validate_config(config)
+
+        config = json.loads(json.dumps(self.config))
+        config["context"]["codex_fallback_window"] = 0
+        with self.assertRaisesRegex(remora.RemoraError, "codex_fallback_window"):
+            remora.validate_config(config)
+
+        config = json.loads(json.dumps(self.config))
+        config["context"]["codex_models_cache"] = []
+        with self.assertRaisesRegex(remora.RemoraError, "codex_models_cache"):
             remora.validate_config(config)
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "do-not-print"}, clear=False)

@@ -25,6 +25,7 @@ remora is a launcher, not a sandbox. Claude Code keeps its normal filesystem and
 |---|---|
 | Native Claude OAuth | Never read or changed by remora |
 | Gateway bearer token | Read from a dedicated environment variable or direct credential command; never printed |
+| Codex model cache | In Calico mode, read-only access to fresh model metadata; auth files are never opened |
 | Agent prompts | Stored as auditable JSON in this repository |
 | Orchestration prompt | Stored as auditable Markdown and appended only to the remora child session |
 | Child environment | Exists only for the launched Claude process tree |
@@ -45,7 +46,7 @@ remora is a launcher, not a sandbox. Claude Code keeps its normal filesystem and
 
 `context.mode = "calico"` is a separate trust decision. remora itself still does not replace Claude Code, but this mode only works with a patched Calico Claude binary. Calico changes the executable supply chain and must be reviewed, installed, verified, and rolled back independently.
 
-remora fails closed by scanning the selected binary for the `custom-context-window` capability marker before launch. The child receives an exact JSON model/window map containing no credentials. Calico accepts only exact model ids and integer windows from 100K through 1M; malformed or missing values fall back to Claude Code's stock behavior. The public remora installer defaults to `stock` and never installs Calico implicitly.
+remora fails closed by scanning the selected binary for the `custom-context-window` capability marker before launch. The child receives an exact JSON model/window map containing no credentials. Each value is bounded by both the gateway catalog and a fresh Codex runtime catalog, with a conservative configured fallback. Calico accepts only exact model ids and integer windows from 100K through 1M; malformed or missing values fall back to Claude Code's stock behavior. The public remora installer defaults to `stock` and never installs Calico implicitly.
 
 ## Secret handling
 

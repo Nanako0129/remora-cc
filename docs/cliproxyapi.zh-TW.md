@@ -211,7 +211,7 @@ remora dry-run
 
 ## Context window 對齊
 
-不要把 OpenAI 公開 API 的 context 數字直接覆寫進 CLIProxyAPI metadata。公開 GPT-5.6 API 標示 1.05M，但 Codex Plus、Pro、Team 的 OAuth catalog 目前回報 372K；後者才是這條 routing 的實際 ceiling。
+不要把 OpenAI 公開 API 的 context 數字直接覆寫進 CLIProxyAPI metadata。公開 GPT-5.6 API 標示 1.05M，CLIProxyAPI 對 Codex OAuth route 目前則回報 372K。但 gateway 只是其中一層 ceiling；權威的 Codex runtime-catalog hot update 已在 2026-07-13 把 Sol、Terra、Luna 改成 272K。
 
 Stock CLIProxyAPI 不需修改即可唯讀取得該值：
 
@@ -224,18 +224,22 @@ curl -fsS \
 
 remora 會做同一個唯讀查詢，但安全預設遵循原生 Claude Code 對未知 custom model id 的 200K 上限。`stock` 模式不注入 context 或 compact override；Claude 原生的 output reserve 與 precompute policy 維持權威。CLIProxyAPI 不需要修改或重啟。
 
-可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會把同一份 catalog 轉成逐一對應的 model/window map，交給 Calico 預設休眠的 adapter。Provider window 為 372K 時，statusline consumer 看到 353.4K usable context，約 334.8K compact。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。
+可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會針對每個已設定模型比較 gateway catalog 與新鮮的本機 Codex runtime cache，採用較小值後再把精確 map 交給 Calico 預設休眠的 adapter。目前 272K client window 會讓 statusline consumer 看到 258.4K usable context，並在 244.8K compact。Codex cache 不存在、超過五分鐘或不完整時，安全 fallback 也是 272K；若之後新鮮的 runtime catalog 回到 372K，remora 會自動恢復 372K。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。
 
 | 來源 | 意義 |
 |---|---|
-| Gateway `context_window` | 優先採用的實際 ceiling |
+| Gateway `context_window` | Gateway 宣告的 ceiling；保留供診斷 |
+| 新鮮的 `~/.codex/models_cache.json` | 權威 Codex runtime ceiling；唯讀且只有 metadata |
 | `[context].mode = "stock"` | 原生安全的 200K client 行為；預設值 |
 | `[context].mode = "calico"` | 明確選用已驗證的 custom-context adapter |
 | `[context].stock_window` | 原生 Claude Code 的 custom-model window，通常是 200K |
 | `[context].fallback_window` | Catalog 查不到或不完整時的保守值 |
+| `[context].codex_fallback_window` | Runtime cache 不可信時的安全 Codex ceiling；目前為 272K |
+| `[context].codex_cache_ttl_seconds` | Codex runtime cache 的 freshness 上限；對齊 Codex 的 300 秒 TTL |
+| `[context].codex_models_cache` | 可選的路徑 override；否則使用 `$CODEX_HOME/models_cache.json` 或 `~/.codex/models_cache.json` |
 | `[context].effective_window_percent` | 診斷用 effective-input 比例；Codex 預設 95% |
 | `[context].auto_compact_percent` | Child auto-compaction 比例；Codex 預設 90% |
-| 既有 Claude auto-compact 環境變數 | 使用者明確 override，優先級最高 |
+| 既有 Claude auto-compact 環境變數 | 使用者明確 override；Calico 模式仍會裁到 Codex client ceiling |
 
 ## 實驗性 active-turn bridge
 

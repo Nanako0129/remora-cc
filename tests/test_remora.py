@@ -197,6 +197,24 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(env["REMORA_ACTIVE"], "1")
         self.assertNotIn("REMORA_ACTIVE", os.environ)
 
+    def test_child_isolates_coralline_rate_limit_store_per_gateway(self) -> None:
+        # coralline's 5h/7d segments read a cross-session high-water store fed by
+        # Anthropic rate-limit responses. A remora child talks to a GPT gateway on
+        # a different account, so it must not share (and poison) the host's native
+        # store. The child env points coralline at a per-gateway subdir, overriding
+        # any inherited value (the parent's path is the host's native store).
+        host_native = str(Path.home() / ".claude" / "coralline" / "limit-7d.tsv")
+        with mock.patch.dict(
+            os.environ, {"CORALLINE_RL7D_FILE": host_native}, clear=False
+        ):
+            _, env = remora.build_launch(self.config, [], require_token=False)
+        gateway_dir = str(
+            Path.home() / ".claude" / "coralline" / "gateways" / "127-0-0-1-8317"
+        )
+        self.assertEqual(env["CORALLINE_RL5H_FILE"], f"{gateway_dir}/limit-5h")
+        self.assertEqual(env["CORALLINE_RL7D_FILE"], f"{gateway_dir}/limit-7d")
+        self.assertNotEqual(env["CORALLINE_RL7D_FILE"], host_native)
+
     def test_token_command_is_executed_without_a_shell(self) -> None:
         config = json.loads(json.dumps(self.config))
         config["proxy"]["auth_token_env"] = "REMORA_TEST_MISSING"

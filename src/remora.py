@@ -38,6 +38,16 @@ AUTO_COMPACT_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 AUTO_COMPACT_PERCENT_ENV = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
 CALICO_CONTEXT_MAP_ENV = "CALICO_MODEL_CONTEXT_WINDOWS"
 CALICO_DISPLAY_PERCENT_ENV = "CALICO_CONTEXT_DISPLAY_PERCENT"
+# coralline (a Claude Code statusline) keeps a cross-session high-water store for
+# its 5h/7d rate-limit segments. Those percentages come from Anthropic API
+# responses, so a remora child (talking to a GPT gateway on a different account)
+# must not share the host's native store or the two accounts poison each other.
+# We point the child at a per-gateway subdir; the host statusline ignores these
+# vars when coralline is not installed.
+CORALLINE_STORE_ENV = {
+    "CORALLINE_RL5H_FILE": "limit-5h",
+    "CORALLINE_RL7D_FILE": "limit-7d",
+}
 CALICO_ACTIVE_TURN_MARKERS = (
     b"calico-active-turn-adapter:v1",
     b"x-calico-prompt-id",
@@ -521,6 +531,19 @@ def gateway_active_turn_supported(config: dict[str, Any], token: str) -> bool:
         return response.headers.get(GATEWAY_ACTIVE_TURN_HEADER, "").strip() == "1"
 
 
+def coralline_store_dir(base_url: str) -> Path:
+    """Gateway-scoped root for coralline's rate-limit high-water store.
+
+    Derived from the gateway host:port so remora sessions on the same gateway
+    share their own store while staying isolated from the host's native Claude
+    limit segments. coralline mkdir -p's the path on first sample.
+    """
+    parsed = urllib.parse.urlsplit(base_url)
+    token = parsed.netloc or parsed.path or "gateway"
+    safe = "".join(c if c.isalnum() else "-" for c in token).strip("-") or "gateway"
+    return Path.home() / ".claude" / "coralline" / "gateways" / safe
+
+
 def build_launch(
     config: dict[str, Any], claude_args: list[str], *, require_token: bool = True
 ) -> tuple[list[str], dict[str, str]]:
@@ -554,6 +577,12 @@ def build_launch(
     env = os.environ.copy()
     env["REMORA_ACTIVE"] = "1"
     env["ANTHROPIC_BASE_URL"] = str(proxy["base_url"]).rstrip("/")
+    # Isolate coralline's rate-limit store per gateway. Override any inherited
+    # value: the parent shell's path points at the host's native store, which is
+    # exactly what the child must not write into.
+    store_root = coralline_store_dir(env["ANTHROPIC_BASE_URL"])
+    for env_name, stem in CORALLINE_STORE_ENV.items():
+        env[env_name] = str(store_root / stem)
     token = resolve_auth_token(config) if require_token else ""
     if require_token:
         env["ANTHROPIC_AUTH_TOKEN"] = token
@@ -731,6 +760,7 @@ def dry_run(config: dict[str, Any], args: list[str]) -> None:
             "CALICO_MODEL_CONTEXT_WINDOWS",
             "CALICO_CONTEXT_DISPLAY_PERCENT",
             "ENABLE_TOOL_SEARCH",
+            *CORALLINE_STORE_ENV,
         ]
         if key in env
     }

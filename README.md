@@ -26,7 +26,9 @@
 
 ## What it changes
 
-remora launches a child `claude` process with a session-only `--agents` JSON document, a session-only orchestration addendum, and a child-only gateway environment. Claude Code officially documents `--agents` as a current-session source that outranks project and user agent files without persisting them. The addendum schedules independent work in the background and reserves foreground agents for immediate blocking dependencies.
+remora launches a child `claude` process with a session-only `--agents` JSON document, a session-only orchestration addendum, and a child-only gateway environment. Claude Code officially documents `--agents` as a current-session source that outranks project and user agent files without persisting them. The addendum uses phase-aware dispatch brakes: Discovery stabilizes the question and evidence contract without pretending the final implementation is already known; the main session then synthesizes one Plan, waits for explicit approval when required, dispatches only stable execution contracts, and closes non-trivial work with fresh verification. Eligible work is chosen by net benefit, so a bounded Luna worker may still be worthwhile when it saves scarce Sol usage even if direct execution is slightly faster.
+
+A delegation planner such as [Baton](https://github.com/cablate/baton) can compose above this role layer. Baton may shape questions, topology, worker count, ownership, sequence, budgets, and stop conditions; remora remains authoritative for named roles, model routing, leaf boundaries, approval, and verifier vocabulary. The full two-turn compatibility gate, including the rejected candidate and exact prompts, is [public and reproducible](./benchmarks/baton-compatibility/README.md).
 
 | Surface | Native `claude` | `remora` session |
 |---|---|---|
@@ -154,7 +156,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.7/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.8/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -166,7 +168,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.7 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.8 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```
@@ -263,6 +265,7 @@ The strongest behavioral check is simply to run both commands. `remora agents` s
 | How do I keep native Claude updates separate from remora's Calico binary? | Install the patched binary under a separate name such as `~/.local/bin/calico-claude`, set `[runtime].claude_binary` to that absolute path, and leave `~/.local/bin/claude` under the official updater. |
 | Does active-turn v1 guarantee unlimited work after quota exhaustion? | No. It preserves the observable native Codex turn contract, but OpenAI still controls fair-use and may terminate a recognized turn. v1 advertises readiness only for one local Codex credential with cooling disabled. |
 | Will `/resume` adopt a newly edited model map? | Not always. Claude can restore the session-scoped agent definitions recorded in the old transcript. Start a new remora session or hand off into one after changing routing. |
+| Can remora be used with a delegation-planning skill such as Baton? | Yes, when the responsibilities compose: Baton chooses discovery and execution topology; remora supplies named roles, model routing, leaf boundaries, approval, and the two verifier modes. The [v0.1.8 compatibility gate](./benchmarks/baton-compatibility/README.md) completed Discovery → main-session Plan → explicit approval → execution → fresh verification, with Luna exploration and Sol verification. remora does not silently disable arbitrary skills, and an explicit `--append-system-prompt*` still replaces its default policy for that session. |
 | Can a remora session use claude.ai remote control or connectors? | Gateway mode does not retain the native claude.ai authenticated transport, so those features may be unavailable. Run plain `claude` when they are required. |
 
 ## Operational notes
@@ -305,7 +308,7 @@ Neither path touches `~/.claude`.
 
 ## Prior art
 
-remora packages a narrow technique rather than inventing multi-agent routing. [pilotfish](https://github.com/Nanako0129/pilotfish) established the role-based orchestration pattern; use it when you want to study or customize the global-policy version of this design. Anthropic documents dynamic session agents and custom LLM gateways; [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) supplies the protocol bridge. remora's contribution is one auditable, installable launcher for an existing gateway, with no mutation of native Claude state.
+remora packages a narrow technique rather than inventing multi-agent routing. [pilotfish](https://github.com/Nanako0129/pilotfish) established the role-based orchestration pattern; use it when you want to study or customize the global-policy version of this design. [Baton](https://github.com/cablate/baton) supplies the capability-neutral delegation-planning layer used by the optional plan-first composition. Anthropic documents dynamic session agents and custom LLM gateways; [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) supplies the protocol bridge. remora's contribution is one auditable, installable launcher for an existing gateway, with no mutation of native Claude state.
 
 ## License
 

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-07-14",
+  "timezone": "Asia/Taipei",
+  "fixture": {
+    "repository": "https://github.com/Nanako0129/pilotfish",
+    "commit": "5f027b8c7701d9acd4ae424a6089ffe3d1fa57a7",
+    "path": "benchmarks/dispatch-brake/positive-controls/research/fixture"
+  },
+  "runtime": {
+    "claude_code": "2.1.207",
+    "calico_patched": true,
+    "remora_candidate": "0.1.8-pr1",
+    "orchestration_sha256": "a2c9749a6a9f25baba86d5944e5d2fcdb62051d1c6b683584429665cae537c07",
+    "agents_sha256": "dc78ad7cc622e79de517fa10a42fa9045d305fef575531492f7519b3c33a85c6",
+    "baton_skill_sha256": "48b1e573a9e3de85fdb68c433bd47d69add9ec8491613ca304cfcef2326e3d67"
+  },
+  "final_gate": {
+    "transcript_sha256": "ed92f06f9fe8cdbac3ebc5fdaa607a1beee10c18c51b6ae7f985c40fe14b44e4",
+    "turns": [
+      {
+        "phase": "discovery_plan_approval_wait",
+        "duration_ms": 294102,
+        "duration_api_ms": 349930,
+        "num_turns": 35,
+        "client_reported_cost_usd": 1.23372,
+        "models": ["gpt-5.6-sol", "gpt-5.6-luna"],
+        "git_clean": true,
+        "verifier_sequence": ["REVISE", "READY"]
+      },
+      {
+        "phase": "approved_execution_verification",
+        "duration_ms": 248304,
+        "duration_api_ms": 247821,
+        "num_turns": 10,
+        "client_reported_cost_usd": 0.915572,
+        "models": ["gpt-5.6-sol"],
+        "only_change": "REPORT.md",
+        "citation_count": 67,
+        "test_passed": true,
+        "verifier_sequence": ["CONFIRMED"]
+      }
+    ],
+    "total_duration_ms": 542406,
+    "total_num_turns": 45,
+    "total_client_reported_cost_usd": 2.149292,
+    "agent_calls": [
+      {"role": "Explore", "surface": "A", "background": true, "invocation_model": null, "observed_model": "gpt-5.6-luna"},
+      {"role": "Explore", "surface": "B", "background": true, "invocation_model": null, "observed_model": "gpt-5.6-luna"},
+      {"role": "verifier", "mode": "plan_readiness", "background": false, "invocation_model": null, "observed_model": "gpt-5.6-sol", "verdicts": ["REVISE", "READY"]},
+      {"role": "verifier", "mode": "completed_work", "background": false, "invocation_model": null, "observed_model": "gpt-5.6-sol", "verdicts": ["CONFIRMED"]}
+    ],
+    "startup_resend_required": false,
+    "passed": true
+  },
+  "rejected_candidate": {
+    "transcript_sha256": "af31d739886ce69a715ab71e4410234cbd42241581d5767c5584747cebf95fcd",
+    "user_turns": 4,
+    "total_duration_ms": 1079998,
+    "total_client_reported_cost_usd": 4.662343,
+    "eventual_completed_work_verdict": "CONFIRMED",
+    "rejection_reason": "Plan readiness invocation requested completed-work vocabulary instead of READY or REVISE"
+  }
+}

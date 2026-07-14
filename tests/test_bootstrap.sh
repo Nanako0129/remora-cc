@@ -12,6 +12,8 @@ chmod +x "$TMP/bin/claude"
 ln -s "$(command -v python3)" "$TMP/bin/python3"
 
 REMORA_DIST_DIR="$TMP/release" "$ROOT/scripts/package-release.sh" >/dev/null
+tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
+  | grep -qx "remora-cc-$VERSION/benchmarks/baton-compatibility/results.json"
 
 PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
 HOME="$TMP/home" \

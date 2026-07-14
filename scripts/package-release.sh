@@ -34,7 +34,7 @@ mkdir -p "$DIST/stage/remora-cc-$VERSION"
 for path in \
   VERSION LICENSE README.md README.zh-TW.md SECURITY.md CONTRIBUTING.md CHANGELOG.md \
   Makefile RELEASING.md config.example.toml bootstrap.sh install.sh uninstall.sh \
-  agents bin docs install scripts src tests
+  agents benchmarks bin docs install scripts src tests
 do
   cp -R "$ROOT/$path" "$DIST/stage/remora-cc-$VERSION/"
 done

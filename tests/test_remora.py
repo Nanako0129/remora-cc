@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -207,9 +208,14 @@ class RemoraTests(unittest.TestCase):
         coralline = Path.home() / ".claude" / "coralline"
         host_7d = str(coralline / "limit-7d.tsv")
         host_burn = str(coralline / "burn-5h.tsv")
+        host_config = str(coralline.parent / "coralline.conf")
         with mock.patch.dict(
             os.environ,
-            {"CORALLINE_RL7D_FILE": host_7d, "CORALLINE_BURN_FILE": host_burn},
+            {
+                "CORALLINE_CONFIG": host_config,
+                "CORALLINE_RL7D_FILE": host_7d,
+                "CORALLINE_BURN_FILE": host_burn,
+            },
             clear=False,
         ):
             _, env = remora.build_launch(self.config, [], require_token=False)
@@ -222,9 +228,64 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(Path(env["CORALLINE_RL7D_FILE"]).parent, store_dir)
         self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).parent, store_dir)
         self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).name, "burn-5h.tsv")
-        # inherited host paths are overridden, not preserved
+        # the generated config wrapper also lives in the scoped directory
+        wrapper = Path(env["CORALLINE_CONFIG"])
+        self.assertEqual(wrapper.parent, store_dir)
+        self.assertTrue(wrapper.name.startswith("config-"))
+        # inherited host paths and config are overridden, not preserved
         self.assertNotEqual(env["CORALLINE_RL7D_FILE"], host_7d)
         self.assertNotEqual(env["CORALLINE_BURN_FILE"], host_burn)
+        self.assertNotEqual(env["CORALLINE_CONFIG"], host_config)
+
+    def test_coralline_wrapper_reapplies_scoped_paths_after_user_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "user config" / "coralline.conf"
+            source.parent.mkdir()
+            source.write_text(
+                "\n".join(
+                    [
+                        "VL_LIMIT_SYNC=1",
+                        "RL5H_FILE=/host/custom-5h",
+                        "RL7D_FILE=/host/custom-7d",
+                        "BURN_FILE=/host/custom-burn",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            scoped = root / "gateway"
+            env = {
+                "CORALLINE_CONFIG": str(scoped / "config.conf"),
+                "CORALLINE_RL5H_FILE": str(scoped / "limit-5h"),
+                "CORALLINE_RL7D_FILE": str(scoped / "limit-7d"),
+                "CORALLINE_BURN_FILE": str(scoped / "burn-5h.tsv"),
+            }
+            remora.prepare_coralline_config(env, str(source))
+            output = subprocess.check_output(
+                [
+                    "bash",
+                    "-c",
+                    '. "$1"; printf "%s\\n" "$VL_LIMIT_SYNC" "$RL5H_FILE" '
+                    '"$RL7D_FILE" "$BURN_FILE"',
+                    "remora-test",
+                    env["CORALLINE_CONFIG"],
+                ],
+                text=True,
+            ).splitlines()
+            self.assertEqual(
+                output,
+                [
+                    "1",
+                    env["CORALLINE_RL5H_FILE"],
+                    env["CORALLINE_RL7D_FILE"],
+                    env["CORALLINE_BURN_FILE"],
+                ],
+            )
+            self.assertEqual(
+                Path(env["CORALLINE_CONFIG"]).stat().st_mode & 0o777,
+                0o600,
+            )
 
     def test_path_routed_gateways_get_distinct_coralline_stores(self) -> None:
         # Two gateways behind the same reverse-proxy host must not collapse into

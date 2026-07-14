@@ -28,7 +28,10 @@ elif [ -e "$LINK" ]; then
   echo "Kept unrelated file: $LINK"
 fi
 
-rm -rf "$INSTALL_DIR" "$STATE_DIR"
+rm -rf "$INSTALL_DIR" "$STATE_DIR/coralline"
+# Remove the state root only when empty. If XDG_STATE_HOME and XDG_CONFIG_HOME
+# alias, config.toml keeps this directory non-empty and therefore preserved.
+rmdir "$STATE_DIR" 2>/dev/null || true
 if [ "$PURGE" -eq 1 ]; then
   rm -rf "$CONFIG_DIR"
   echo "Removed remora and its configuration."

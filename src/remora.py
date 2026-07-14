@@ -52,6 +52,7 @@ CORALLINE_STORE_ENV = {
     "CORALLINE_RL7D_FILE": "limit-7d",
     "CORALLINE_BURN_FILE": "burn-5h.tsv",
 }
+CORALLINE_GATEWAY_PREFIX_MAX = 80
 CALICO_ACTIVE_TURN_MARKERS = (
     b"calico-active-turn-adapter:v1",
     b"x-calico-prompt-id",
@@ -553,13 +554,16 @@ def coralline_store_dir(
 
     Keyed on the full gateway URL so remora sessions on the same gateway share
     their own stores while staying isolated from the host's native Claude limit
-    and burn segments. The directory name is a readable host prefix plus a hash
-    of the whole URL, so path-routed gateways behind one reverse-proxy host
+    and burn segments. The directory name is a bounded readable host prefix plus
+    a hash of the whole URL, so path-routed gateways behind one reverse-proxy host
     (`https://gw/team-a` vs `/team-b`) do not collapse into one store. Files live
     under remora-owned XDG state, never under native Claude's ~/.claude tree.
     """
     parsed = urllib.parse.urlsplit(base_url)
     host = "".join(c if c.isalnum() else "-" for c in (parsed.netloc or "")).strip("-")
+    # Keep the human-readable part bounded below common 255-byte component limits.
+    # The full-URL hash remains the uniqueness source after truncation.
+    host = host[:CORALLINE_GATEWAY_PREFIX_MAX].rstrip("-")
     digest = hashlib.sha256(base_url.encode("utf-8")).hexdigest()[:10]
     token = f"{host}-{digest}" if host else f"gateway-{digest}"
     environment = env if env is not None else os.environ.copy()

@@ -71,6 +71,20 @@ XDG_STATE_HOME="$TMP/.local/state" \
 test ! -e "$TMP/.local/share/remora-cc"
 test ! -e "$TMP/.local/state/remora-cc"
 test -f "$TMP/.config/remora-cc/config.toml"
+
+# If XDG state and config homes alias, default uninstall must remove only the
+# known runtime subtree and preserve config.toml as promised.
+mkdir -p "$TMP/alias/remora-cc/coralline" "$TMP/alias-data/remora-cc"
+touch "$TMP/alias/remora-cc/config.toml" "$TMP/alias/remora-cc/coralline/runtime"
+HOME="$TMP" \
+REMORA_PREFIX="$TMP/alias-prefix" \
+XDG_DATA_HOME="$TMP/alias-data" \
+XDG_CONFIG_HOME="$TMP/alias" \
+XDG_STATE_HOME="$TMP/alias" \
+  "$ROOT/uninstall.sh" >/dev/null
+test -f "$TMP/alias/remora-cc/config.toml"
+test ! -e "$TMP/alias/remora-cc/coralline"
+
 AFTER_UNINSTALL=$(find "$TMP/.claude" -type f -print | sort)
 test "$BEFORE" = "$AFTER_UNINSTALL"
 test "$BEFORE_CONTENT" = "$(cksum "$TMP/.claude/settings.json")"

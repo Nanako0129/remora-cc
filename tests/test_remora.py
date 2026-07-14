@@ -316,6 +316,16 @@ class RemoraTests(unittest.TestCase):
             remora.coralline_store_dir("http://gw.example.com/team-a"), team_a
         )
 
+    def test_long_gateway_host_keeps_store_component_within_filesystem_limit(self) -> None:
+        host = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+        team_a = remora.coralline_store_dir(f"https://{host}/team-a")
+        team_b = remora.coralline_store_dir(f"https://{host}/team-b")
+        self.assertLessEqual(
+            len(team_a.name.encode("utf-8")),
+            remora.CORALLINE_GATEWAY_PREFIX_MAX + 11,
+        )
+        self.assertNotEqual(team_a, team_b)
+
     def test_token_command_is_executed_without_a_shell(self) -> None:
         config = json.loads(json.dumps(self.config))
         config["proxy"]["auth_token_env"] = "REMORA_TEST_MISSING"

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -536,14 +537,18 @@ def gateway_active_turn_supported(config: dict[str, Any], token: str) -> bool:
 def coralline_store_dir(base_url: str) -> Path:
     """Gateway-scoped root for coralline's rate-limit and burn stores.
 
-    Derived from the gateway host:port so remora sessions on the same gateway
-    share their own stores while staying isolated from the host's native Claude
-    limit and burn segments. coralline mkdir -p's the path on first sample.
+    Keyed on the full gateway URL so remora sessions on the same gateway share
+    their own stores while staying isolated from the host's native Claude limit
+    and burn segments. The directory name is a readable host prefix plus a hash
+    of the whole URL, so path-routed gateways behind one reverse-proxy host
+    (`https://gw/team-a` vs `/team-b`) do not collapse into one store. coralline
+    mkdir -p's the path on first sample.
     """
     parsed = urllib.parse.urlsplit(base_url)
-    token = parsed.netloc or parsed.path or "gateway"
-    safe = "".join(c if c.isalnum() else "-" for c in token).strip("-") or "gateway"
-    return Path.home() / ".claude" / "coralline" / "gateways" / safe
+    host = "".join(c if c.isalnum() else "-" for c in (parsed.netloc or "")).strip("-")
+    digest = hashlib.sha256(base_url.encode("utf-8")).hexdigest()[:10]
+    token = f"{host}-{digest}" if host else f"gateway-{digest}"
+    return Path.home() / ".claude" / "coralline" / "gateways" / token
 
 
 def build_launch(

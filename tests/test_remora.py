@@ -213,12 +213,31 @@ class RemoraTests(unittest.TestCase):
             clear=False,
         ):
             _, env = remora.build_launch(self.config, [], require_token=False)
-        gateway_dir = str(coralline / "gateways" / "127-0-0-1-8317")
-        self.assertEqual(env["CORALLINE_RL5H_FILE"], f"{gateway_dir}/limit-5h")
-        self.assertEqual(env["CORALLINE_RL7D_FILE"], f"{gateway_dir}/limit-7d")
-        self.assertEqual(env["CORALLINE_BURN_FILE"], f"{gateway_dir}/burn-5h.tsv")
+        store_dir = Path(env["CORALLINE_RL5H_FILE"]).parent
+        # a per-gateway subdir under the gateways root, prefixed by the host
+        self.assertEqual(store_dir.parent, coralline / "gateways")
+        self.assertTrue(store_dir.name.startswith("127-0-0-1-8317-"))
+        # all three stores redirected into that same dir
+        self.assertEqual(Path(env["CORALLINE_RL5H_FILE"]).name, "limit-5h")
+        self.assertEqual(Path(env["CORALLINE_RL7D_FILE"]).parent, store_dir)
+        self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).parent, store_dir)
+        self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).name, "burn-5h.tsv")
+        # inherited host paths are overridden, not preserved
         self.assertNotEqual(env["CORALLINE_RL7D_FILE"], host_7d)
         self.assertNotEqual(env["CORALLINE_BURN_FILE"], host_burn)
+
+    def test_path_routed_gateways_get_distinct_coralline_stores(self) -> None:
+        # Two gateways behind the same reverse-proxy host must not collapse into
+        # one store, or the cross-account poisoning this change prevents returns.
+        team_a = remora.coralline_store_dir("https://gw.example.com/team-a")
+        team_b = remora.coralline_store_dir("https://gw.example.com/team-b")
+        self.assertNotEqual(team_a, team_b)
+        self.assertTrue(team_a.name.startswith("gw-example-com-"))
+        self.assertTrue(team_b.name.startswith("gw-example-com-"))
+        # scheme also participates in the key
+        self.assertNotEqual(
+            remora.coralline_store_dir("http://gw.example.com/team-a"), team_a
+        )
 
     def test_token_command_is_executed_without_a_shell(self) -> None:
         config = json.loads(json.dumps(self.config))

@@ -6,7 +6,8 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 mkdir -p "$TMP/.claude" "$TMP/bin"
-touch "$TMP/.claude/settings.json" "$TMP/bin/claude"
+touch "$TMP/.claude/settings.json"
+printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/claude"
 chmod +x "$TMP/bin/claude"
 BEFORE=$(find "$TMP/.claude" -type f -print | sort)
 BEFORE_CONTENT=$(cksum "$TMP/.claude/settings.json")
@@ -47,13 +48,28 @@ XDG_CONFIG_HOME="$TMP/.config" \
 REMORA_AUTH_TOKEN=test-only \
   "$TMP/.local/bin/remora" doctor >/dev/null
 
+# A real launch prepares integration state outside native ~/.claude, then execs
+# the fake claude binary. This catches runtime writes that install-only checks miss.
+PATH="$TMP/bin:$PATH" \
+HOME="$TMP" \
+XDG_CONFIG_HOME="$TMP/.config" \
+XDG_STATE_HOME="$TMP/.local/state" \
+REMORA_AUTH_TOKEN=test-only \
+  "$TMP/.local/bin/remora" --continue >/dev/null
+find "$TMP/.local/state/remora-cc" -name 'config-*.conf' -type f | grep -q .
+AFTER_LAUNCH=$(find "$TMP/.claude" -type f -print | sort)
+test "$BEFORE" = "$AFTER_LAUNCH"
+test "$BEFORE_CONTENT" = "$(cksum "$TMP/.claude/settings.json")"
+
 HOME="$TMP" \
 REMORA_PREFIX="$TMP/.local" \
 XDG_DATA_HOME="$TMP/.local/share" \
 XDG_CONFIG_HOME="$TMP/.config" \
+XDG_STATE_HOME="$TMP/.local/state" \
   "$ROOT/uninstall.sh" >/dev/null
 
 test ! -e "$TMP/.local/share/remora-cc"
+test ! -e "$TMP/.local/state/remora-cc"
 test -f "$TMP/.config/remora-cc/config.toml"
 AFTER_UNINSTALL=$(find "$TMP/.claude" -type f -print | sort)
 test "$BEFORE" = "$AFTER_UNINSTALL"

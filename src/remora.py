@@ -535,21 +535,35 @@ def gateway_active_turn_supported(config: dict[str, Any], token: str) -> bool:
         return response.headers.get(GATEWAY_ACTIVE_TURN_HEADER, "").strip() == "1"
 
 
-def coralline_store_dir(base_url: str) -> Path:
+def remora_state_dir(env: dict[str, str]) -> Path:
+    """Return remora's XDG runtime-state directory."""
+    configured = env.get("XDG_STATE_HOME", "").strip()
+    if configured:
+        state_home = Path(configured).expanduser()
+    else:
+        home = env.get("HOME", "").strip() or str(Path.home())
+        state_home = Path(home) / ".local" / "state"
+    return state_home / "remora-cc"
+
+
+def coralline_store_dir(
+    base_url: str, env: dict[str, str] | None = None
+) -> Path:
     """Gateway-scoped root for coralline's rate-limit and burn stores.
 
     Keyed on the full gateway URL so remora sessions on the same gateway share
     their own stores while staying isolated from the host's native Claude limit
     and burn segments. The directory name is a readable host prefix plus a hash
     of the whole URL, so path-routed gateways behind one reverse-proxy host
-    (`https://gw/team-a` vs `/team-b`) do not collapse into one store. coralline
-    mkdir -p's the path on first sample.
+    (`https://gw/team-a` vs `/team-b`) do not collapse into one store. Files live
+    under remora-owned XDG state, never under native Claude's ~/.claude tree.
     """
     parsed = urllib.parse.urlsplit(base_url)
     host = "".join(c if c.isalnum() else "-" for c in (parsed.netloc or "")).strip("-")
     digest = hashlib.sha256(base_url.encode("utf-8")).hexdigest()[:10]
     token = f"{host}-{digest}" if host else f"gateway-{digest}"
-    return Path.home() / ".claude" / "coralline" / "gateways" / token
+    environment = env if env is not None else os.environ.copy()
+    return remora_state_dir(environment) / "coralline" / "gateways" / token
 
 
 def coralline_source_config(env: dict[str, str]) -> str:
@@ -637,7 +651,7 @@ def build_launch(
     # inherited value: the parent shell's path points at the host's native store,
     # which is exactly what the child must not write into. CORALLINE_CONFIG points
     # at a wrapper that sources the user's config before reapplying these paths.
-    store_root = coralline_store_dir(env["ANTHROPIC_BASE_URL"])
+    store_root = coralline_store_dir(env["ANTHROPIC_BASE_URL"], env)
     for env_name, stem in CORALLINE_STORE_ENV.items():
         env[env_name] = str(store_root / stem)
     env["CORALLINE_CONFIG"] = str(

@@ -134,7 +134,7 @@ remora is not a hosted gateway, an OAuth account manager, an official OpenAI or 
 | No blind overwrite | Installer refuses unrelated executables and preserves existing user configuration |
 | Native Claude isolation | Installer and launcher never write `~/.claude`, replace `claude`, or read the Anthropic login |
 | Secret minimization | Gateway tokens come from an environment variable or direct credential command and are never printed |
-| Reversible scope | Only three remora-owned locations are installed; uninstall does not touch native Claude |
+| Reversible scope | Installation and runtime state stay in remora-owned XDG locations; uninstall removes code and runtime state, preserves config by default, and never touches native Claude |
 
 The gateway and upstream model still receive prompts and any source Claude Code sends them. Review the full [security policy](./SECURITY.md) and [gateway trust boundary](./docs/cliproxyapi.md) before using remora on sensitive repositories.
 
@@ -180,6 +180,8 @@ The installer copies remora under the XDG data directory, creates a configuratio
 ~/.local/share/remora-cc/
 ~/.config/remora-cc/config.toml
 ```
+
+On first launch, remora may create runtime integration state under `${XDG_STATE_HOME:-$HOME/.local/state}/remora-cc/`. This state is remora-owned, never lives under `~/.claude`, and is removed by uninstall.
 
 It does not add the bin directory to `PATH`. If needed, add this to your shell profile yourself:
 
@@ -298,7 +300,7 @@ remora never prints the gateway token, includes no telemetry, and invokes creden
 ./uninstall.sh
 ```
 
-The default keeps the configuration for reinstalling. Remove it too with:
+The default removes the installed code and runtime state but keeps the configuration for reinstalling. Remove the configuration too with:
 
 ```bash
 ./uninstall.sh --purge

@@ -203,39 +203,48 @@ class RemoraTests(unittest.TestCase):
         # burn segment appends a 5h sample log; both are fed by Anthropic responses.
         # A remora child talks to a GPT gateway on a different account, so it must
         # not share (and poison) the host's native stores. The child env points
-        # coralline at a per-gateway subdir, overriding any inherited value (the
-        # parent's path is the host's native store).
-        coralline = Path.home() / ".claude" / "coralline"
-        host_7d = str(coralline / "limit-7d.tsv")
-        host_burn = str(coralline / "burn-5h.tsv")
-        host_config = str(coralline.parent / "coralline.conf")
-        with mock.patch.dict(
-            os.environ,
-            {
-                "CORALLINE_CONFIG": host_config,
-                "CORALLINE_RL7D_FILE": host_7d,
-                "CORALLINE_BURN_FILE": host_burn,
-            },
-            clear=False,
-        ):
-            _, env = remora.build_launch(self.config, [], require_token=False)
-        store_dir = Path(env["CORALLINE_RL5H_FILE"]).parent
-        # a per-gateway subdir under the gateways root, prefixed by the host
-        self.assertEqual(store_dir.parent, coralline / "gateways")
-        self.assertTrue(store_dir.name.startswith("127-0-0-1-8317-"))
-        # all three stores redirected into that same dir
-        self.assertEqual(Path(env["CORALLINE_RL5H_FILE"]).name, "limit-5h")
-        self.assertEqual(Path(env["CORALLINE_RL7D_FILE"]).parent, store_dir)
-        self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).parent, store_dir)
-        self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).name, "burn-5h.tsv")
-        # the generated config wrapper also lives in the scoped directory
-        wrapper = Path(env["CORALLINE_CONFIG"])
-        self.assertEqual(wrapper.parent, store_dir)
-        self.assertTrue(wrapper.name.startswith("config-"))
-        # inherited host paths and config are overridden, not preserved
-        self.assertNotEqual(env["CORALLINE_RL7D_FILE"], host_7d)
-        self.assertNotEqual(env["CORALLINE_BURN_FILE"], host_burn)
-        self.assertNotEqual(env["CORALLINE_CONFIG"], host_config)
+        # coralline at a per-gateway subdir in remora-owned XDG state, overriding
+        # any inherited host value without writing into ~/.claude.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_home = root / "state"
+            native = root / ".claude"
+            host_7d = str(native / "coralline" / "limit-7d.tsv")
+            host_burn = str(native / "coralline" / "burn-5h.tsv")
+            host_config = str(native / "coralline.conf")
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "HOME": str(root),
+                    "XDG_STATE_HOME": str(state_home),
+                    "CORALLINE_CONFIG": host_config,
+                    "CORALLINE_RL7D_FILE": host_7d,
+                    "CORALLINE_BURN_FILE": host_burn,
+                },
+                clear=False,
+            ):
+                _, env = remora.build_launch(self.config, [], require_token=False)
+            store_dir = Path(env["CORALLINE_RL5H_FILE"]).parent
+            # a per-gateway subdir under remora-owned state, prefixed by the host
+            self.assertEqual(
+                store_dir.parent,
+                state_home / "remora-cc" / "coralline" / "gateways",
+            )
+            self.assertTrue(store_dir.name.startswith("127-0-0-1-8317-"))
+            # all three stores redirected into that same dir
+            self.assertEqual(Path(env["CORALLINE_RL5H_FILE"]).name, "limit-5h")
+            self.assertEqual(Path(env["CORALLINE_RL7D_FILE"]).parent, store_dir)
+            self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).parent, store_dir)
+            self.assertEqual(Path(env["CORALLINE_BURN_FILE"]).name, "burn-5h.tsv")
+            # the generated config wrapper also lives in the scoped directory
+            wrapper = Path(env["CORALLINE_CONFIG"])
+            self.assertEqual(wrapper.parent, store_dir)
+            self.assertTrue(wrapper.name.startswith("config-"))
+            # inherited host paths and config are overridden, not preserved
+            self.assertNotEqual(env["CORALLINE_RL7D_FILE"], host_7d)
+            self.assertNotEqual(env["CORALLINE_BURN_FILE"], host_burn)
+            self.assertNotEqual(env["CORALLINE_CONFIG"], host_config)
+            self.assertNotIn(native, wrapper.parents)
 
     def test_coralline_wrapper_reapplies_scoped_paths_after_user_config(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

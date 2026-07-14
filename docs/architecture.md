@@ -102,7 +102,7 @@ This separation makes failures diagnosable:
 
 ## Native-Claude proof
 
-The launcher contains no code path that opens `~/.claude` for writing. Installation targets only XDG-style remora paths. Tests also assert that clearing a global subagent override mutates only the environment copy passed to the child, not the parent process.
+The launcher contains no code path that opens `~/.claude` for writing. Installation targets only XDG-style remora paths, and runtime integration files stay under `${XDG_STATE_HOME:-$HOME/.local/state}/remora-cc/`. Tests exercise a real launcher-to-fake-Claude exec, assert that `~/.claude` remains byte-identical, and verify that clearing a global subagent override mutates only the environment copy passed to the child, not the parent process.
 
 ## Compatibility boundary
 

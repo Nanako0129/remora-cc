@@ -255,6 +255,8 @@ class RemoraTests(unittest.TestCase):
                 "\n".join(
                     [
                         "VL_LIMIT_SYNC=1",
+                        'CONFIG_SIBLING="${CORALLINE_CONFIG%/*}/theme.conf"',
+                        'VL_CONF_SIBLING="${VL_CONF%/*}/theme.conf"',
                         "RL5H_FILE=/host/custom-5h",
                         "RL7D_FILE=/host/custom-7d",
                         "BURN_FILE=/host/custom-burn",
@@ -275,8 +277,9 @@ class RemoraTests(unittest.TestCase):
                 [
                     "bash",
                     "-c",
-                    '. "$1"; printf "%s\\n" "$VL_LIMIT_SYNC" "$RL5H_FILE" '
-                    '"$RL7D_FILE" "$BURN_FILE"',
+                    '. "$1"; printf "%s\\n" "$VL_LIMIT_SYNC" "$CORALLINE_CONFIG" '
+                    '"$VL_CONF" "$CONFIG_SIBLING" "$VL_CONF_SIBLING" '
+                    '"$RL5H_FILE" "$RL7D_FILE" "$BURN_FILE"',
                     "remora-test",
                     env["CORALLINE_CONFIG"],
                 ],
@@ -286,6 +289,10 @@ class RemoraTests(unittest.TestCase):
                 output,
                 [
                     "1",
+                    str(source),
+                    str(source),
+                    str(source.parent / "theme.conf"),
+                    str(source.parent / "theme.conf"),
                     env["CORALLINE_RL5H_FILE"],
                     env["CORALLINE_RL7D_FILE"],
                     env["CORALLINE_BURN_FILE"],

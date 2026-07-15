@@ -26,7 +26,7 @@
 
 ## What it changes
 
-remora launches a child `claude` process with a session-only `--agents` JSON document, a session-only orchestration addendum, and a child-only gateway environment. Claude Code officially documents `--agents` as a current-session source that outranks project and user agent files without persisting them. The addendum uses phase-aware dispatch brakes: Discovery stabilizes the question and evidence contract without pretending the final implementation is already known; the main session then synthesizes one Plan, waits for explicit approval when required, dispatches only stable execution contracts, and closes non-trivial work with fresh verification. Eligible work is chosen by net benefit, so a bounded Luna worker may still be worthwhile when it saves scarce Sol usage even if direct execution is slightly faster.
+remora launches a child `claude` process with a session-only `--agents` JSON document, a session-only orchestration addendum, and a child-only gateway environment. Claude Code officially documents `--agents` as a current-session source that outranks project and user agent files without persisting them. The roster deliberately covers all eight current pilotfish role names, including `plan-verifier` and `security-reviewer`, so a global pilotfish installation cannot fill gaps with its own user-level definitions inside remora. The addendum uses phase-aware dispatch brakes: Discovery stabilizes the question and evidence contract without pretending the final implementation is already known; the main session then synthesizes one Plan, waits for explicit approval when required, dispatches only stable execution contracts, and closes non-trivial work with fresh verification. Eligible work is chosen by net benefit, so a bounded Luna worker may still be worthwhile when it saves scarce Sol usage even if direct execution is slightly faster.
 
 A delegation planner such as [Baton](https://github.com/cablate/baton) can compose above this role layer. Baton may shape questions, topology, worker count, ownership, sequence, budgets, and stop conditions; remora remains authoritative for named roles, model routing, leaf boundaries, approval, and verifier vocabulary. The full two-turn compatibility gate, including the rejected candidate and exact prompts, is [public and reproducible](./benchmarks/baton-compatibility/README.md).
 
@@ -68,13 +68,15 @@ Claude Code's built-in aliases remain useful escape hatches: Opus defaults to So
 
 Claude Code validates subagent models against `availableModels`. If a user's normal settings list only Claude aliases, a raw gateway id such as `gpt-5.6-luna` is otherwise rejected and silently inherits the Sol main model. remora prevents that fallback by passing a child-only additional settings document that allowlists every configured gateway model. It does not write or replace the user's settings file, and managed organization policy still retains its normal higher precedence.
 
-The role definition is the only model source for a named agent. remora's orchestration policy therefore forbids passing `model` when invoking `Explore`, `scout`, `mech-executor`, `executor`, `verifier`, `security-executor`, or any other existing named role: Claude Code gives an invocation-level model higher precedence and would bypass the role map. Only a truly ad-hoc agent with no role definition receives an explicit invocation model.
+The role definition is the only model source for a named agent. remora's orchestration policy therefore forbids passing `model` when invoking `Explore`, `scout`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`, `security-executor`, or any other existing named role: Claude Code gives an invocation-level model higher precedence and would bypass the role map. Only a truly ad-hoc agent with no role definition receives an explicit invocation model.
 
 | Role | Default model | Effort | Responsibility |
 |---|---|---:|---|
 | Main session | `gpt-5.6-sol` | User-selected | Plan, decide, integrate |
 | `Explore` | `gpt-5.6-luna` | low | Broad read-only search |
 | `scout` | `gpt-5.6-luna` | low | Focused reconnaissance |
+| `plan-verifier` | `gpt-5.6-sol` | medium | Tool-enforced read-only Plan challenge before approval |
+| `security-reviewer` | `gpt-5.6-sol` | high | Tool-enforced read-only security evidence before approval |
 | `mech-executor` | `gpt-5.6-luna` | medium | Fully specified mechanical work |
 | `executor` | `gpt-5.6-luna` | max | Cost-efficient implementation with deeper reasoning |
 | `verifier` | `gpt-5.6-sol` | high | Independent adversarial verification |
@@ -199,6 +201,8 @@ Edit the generated configuration:
 ${EDITOR:-vi} ~/.config/remora-cc/config.toml
 ```
 
+Configs created before the eight-role roster remain valid: missing `plan-verifier` routing falls back to `verifier`, and missing `security-reviewer` routing falls back to `security-executor`. Add the explicit keys from `config.example.toml` when you want their effort levels configured independently.
+
 For a quick local test, export the gateway token in the current terminal:
 
 ```bash
@@ -267,7 +271,7 @@ The strongest behavioral check is simply to run both commands. `remora agents` s
 | How do I keep native Claude updates separate from remora's Calico binary? | Install the patched binary under a separate name such as `~/.local/bin/calico-claude`, set `[runtime].claude_binary` to that absolute path, and leave `~/.local/bin/claude` under the official updater. |
 | Does active-turn v1 guarantee unlimited work after quota exhaustion? | No. It preserves the observable native Codex turn contract, but OpenAI still controls fair-use and may terminate a recognized turn. v1 advertises readiness only for one local Codex credential with cooling disabled. |
 | Will `/resume` adopt a newly edited model map? | Not always. Claude can restore the session-scoped agent definitions recorded in the old transcript. Start a new remora session or hand off into one after changing routing. |
-| Can remora be used with a delegation-planning skill such as Baton? | Yes, when the responsibilities compose: Baton chooses discovery and execution topology; remora supplies named roles, model routing, leaf boundaries, approval, and the two verifier modes. The [v0.1.8 compatibility gate](./benchmarks/baton-compatibility/README.md) completed Discovery → main-session Plan → explicit approval → execution → fresh verification, with Luna exploration and Sol verification. remora does not silently disable arbitrary skills, and an explicit `--append-system-prompt*` still replaces its default policy for that session. |
+| Can remora be used with a delegation-planning skill such as Baton? | Yes, when the responsibilities compose: Baton chooses discovery and execution topology; remora supplies named roles, model routing, leaf boundaries, approval, and separate Plan/outcome verifier roles. The [v0.1.8 compatibility gate](./benchmarks/baton-compatibility/README.md) completed Discovery → main-session Plan → explicit approval → execution → fresh verification, with Luna exploration and Sol verification. remora does not silently disable arbitrary skills, and an explicit `--append-system-prompt*` still replaces its default policy for that session. |
 | Can a remora session use claude.ai remote control or connectors? | Gateway mode does not retain the native claude.ai authenticated transport, so those features may be unavailable. Run plain `claude` when they are required. |
 
 ## Operational notes

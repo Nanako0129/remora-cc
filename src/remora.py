@@ -98,10 +98,10 @@ def validate_config(config: dict[str, Any]) -> None:
     definitions = load_agent_definitions()
     model_map = config.get("agent_models", {})
     effort_map = config.get("agent_effort", {})
-    for name in definitions:
-        if not str(model_map.get(name, "")).strip():
+    for name, definition in definitions.items():
+        if not agent_config_value(model_map, name, definition):
             raise RemoraError(f"agent_models.{name} is missing")
-        if not str(effort_map.get(name, "")).strip():
+        if not agent_config_value(effort_map, name, definition):
             raise RemoraError(f"agent_effort.{name} is missing")
 
     context = config.get("context", {})
@@ -168,6 +168,17 @@ def load_agent_definitions() -> dict[str, dict[str, Any]]:
     return data
 
 
+def agent_config_value(
+    values: dict[str, Any], name: str, definition: dict[str, Any]
+) -> str:
+    """Resolve a role setting while keeping pre-eight-role configs usable."""
+    value = str(values.get(name, "")).strip()
+    if value:
+        return value
+    fallback = str(definition.get("_routing_fallback", "")).strip()
+    return str(values.get(fallback, "")).strip() if fallback else ""
+
+
 def load_orchestration_policy() -> str:
     try:
         policy = ORCHESTRATION_FILE.read_text(encoding="utf-8").strip()
@@ -187,8 +198,9 @@ def render_agents(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rendered: dict[str, dict[str, Any]] = {}
     for name, source in definitions.items():
         agent = dict(source)
-        agent["model"] = models[name]
-        agent["effort"] = efforts[name]
+        agent.pop("_routing_fallback", None)
+        agent["model"] = agent_config_value(models, name, source)
+        agent["effort"] = agent_config_value(efforts, name, source)
         rendered[name] = agent
     return rendered
 

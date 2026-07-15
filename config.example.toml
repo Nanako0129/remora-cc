@@ -32,6 +32,8 @@ auto_compact_percent = 90
 [agent_models]
 Explore = "gpt-5.6-luna"
 scout = "gpt-5.6-luna"
+plan-verifier = "gpt-5.6-sol"
+security-reviewer = "gpt-5.6-sol"
 mech-executor = "gpt-5.6-luna"
 executor = "gpt-5.6-luna"
 verifier = "gpt-5.6-sol"
@@ -40,6 +42,8 @@ security-executor = "gpt-5.6-sol"
 [agent_effort]
 Explore = "low"
 scout = "low"
+plan-verifier = "medium"
+security-reviewer = "high"
 mech-executor = "medium"
 executor = "max"
 verifier = "high"

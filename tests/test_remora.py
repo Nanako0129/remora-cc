@@ -27,7 +27,26 @@ class RemoraTests(unittest.TestCase):
 
     def test_role_map_matches_pilotfish_style_split(self) -> None:
         agents = remora.render_agents(self.config)
+        self.assertEqual(
+            set(agents),
+            {
+                "Explore",
+                "scout",
+                "plan-verifier",
+                "security-reviewer",
+                "mech-executor",
+                "executor",
+                "verifier",
+                "security-executor",
+            },
+        )
         self.assertEqual(agents["scout"]["model"], "gpt-5.6-luna")
+        self.assertEqual(agents["plan-verifier"]["model"], "gpt-5.6-sol")
+        self.assertEqual(agents["plan-verifier"]["effort"], "medium")
+        self.assertEqual(agents["plan-verifier"]["tools"], ["Read", "Glob", "Grep"])
+        self.assertEqual(agents["security-reviewer"]["model"], "gpt-5.6-sol")
+        self.assertEqual(agents["security-reviewer"]["effort"], "high")
+        self.assertIn("WebSearch", agents["security-reviewer"]["tools"])
         self.assertEqual(agents["mech-executor"]["model"], "gpt-5.6-luna")
         self.assertEqual(agents["executor"]["model"], "gpt-5.6-luna")
         self.assertEqual(agents["executor"]["effort"], "max")
@@ -57,6 +76,9 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("--agents", command)
         payload = json.loads(command[command.index("--agents") + 1])
         self.assertEqual(payload["scout"]["model"], "gpt-5.6-luna")
+        self.assertIn("plan-verifier", payload)
+        self.assertIn("security-reviewer", payload)
+        self.assertNotIn("_routing_fallback", payload["plan-verifier"])
         policy = command[command.index("--append-system-prompt") + 1]
         self.assertIn("run_in_background: true", policy)
         self.assertIn("Use foreground execution only", policy)
@@ -99,6 +121,7 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("| Plan |", policy)
         self.assertIn("main session synthesizes one Plan", policy)
         self.assertIn("returning only `READY` or `REVISE`", policy)
+        self.assertIn("tool-enforced read-only `plan-verifier`", policy)
         self.assertIn("| Approval |", policy)
         self.assertIn("wait for explicit user approval", policy)
         self.assertIn("Do not send an implementation brief or edit source", policy)
@@ -106,18 +129,46 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("approved or otherwise authorized contract", policy)
         self.assertIn("| Verification |", policy)
         self.assertIn("returns only `CONFIRMED` or `REFUTED`", policy)
-        self.assertIn("must not request `CONFIRMED` or `REFUTED`", policy)
+        self.assertIn("request only `READY` or `REVISE`", policy)
         self.assertIn("not Plan-readiness labels", policy)
 
-    def test_verifier_supports_plan_readiness_and_outcome_modes(self) -> None:
+    def test_plan_and_outcome_verifiers_have_separate_capabilities(self) -> None:
+        plan_verifier = remora.load_agent_definitions()["plan-verifier"]
         verifier = remora.load_agent_definitions()["verifier"]
-        self.assertIn("Plan readiness", verifier["prompt"])
-        self.assertIn("READY or REVISE", verifier["prompt"])
-        self.assertIn("completed-work verification", verifier["prompt"])
-        self.assertIn("CONFIRMED or REFUTED", verifier["prompt"])
-        self.assertIn("Never write or revise the Plan", verifier["prompt"])
+        self.assertIn("READY", plan_verifier["prompt"])
+        self.assertIn("REVISE", plan_verifier["prompt"])
+        self.assertEqual(plan_verifier["tools"], ["Read", "Glob", "Grep"])
+        self.assertNotIn("Plan readiness", verifier["prompt"])
+        self.assertIn("exactly CONFIRMED or REFUTED", verifier["prompt"])
         self.assertIn("Write", verifier["disallowedTools"])
         self.assertIn("Agent", verifier["disallowedTools"])
+
+    def test_security_review_and_execution_have_separate_capabilities(self) -> None:
+        definitions = remora.load_agent_definitions()
+        reviewer = definitions["security-reviewer"]
+        executor = definitions["security-executor"]
+        self.assertEqual(
+            reviewer["tools"], ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
+        )
+        self.assertIn("Never execute commands", reviewer["prompt"])
+        self.assertIn("pre-approval evidence belongs to security-reviewer", executor["prompt"])
+
+    def test_pre_eight_role_config_uses_review_role_routing_fallbacks(self) -> None:
+        legacy = {
+            **self.config,
+            "agent_models": dict(self.config["agent_models"]),
+            "agent_effort": dict(self.config["agent_effort"]),
+        }
+        for section in ("agent_models", "agent_effort"):
+            legacy[section].pop("plan-verifier")
+            legacy[section].pop("security-reviewer")
+        remora.validate_config(legacy)
+        agents = remora.render_agents(legacy)
+        self.assertEqual(agents["plan-verifier"]["model"], agents["verifier"]["model"])
+        self.assertEqual(
+            agents["security-reviewer"]["model"],
+            agents["security-executor"]["model"],
+        )
 
     def test_policy_keeps_tightly_coupled_exploration_in_main_session(self) -> None:
         policy = remora.load_orchestration_policy()

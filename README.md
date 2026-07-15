@@ -158,7 +158,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.9/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.10/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -170,7 +170,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.9 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.10 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

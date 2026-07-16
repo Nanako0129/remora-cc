@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.10"
+VERSION = "0.1.11"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
@@ -38,6 +38,21 @@ DEFAULT_EFFECTIVE_CONTEXT_PERCENT = 95
 DEFAULT_AUTO_COMPACT_PERCENT = 90
 AUTO_COMPACT_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 AUTO_COMPACT_PERCENT_ENV = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
+CLAUDE_EXTRA_BODY_ENV = "CLAUDE_CODE_EXTRA_BODY"
+FAST_SERVICE_TIER = "priority"
+FAST_ACCEPTED_SERVICE_TIERS = {"fast", FAST_SERVICE_TIER}
+REMORA_BUILTIN_COMMANDS = {
+    "doctor",
+    "agents",
+    "render-agents",
+    "dry-run",
+    "version",
+    "--version",
+    "-V",
+    "help",
+    "--help",
+    "-h",
+}
 CALICO_CONTEXT_MAP_ENV = "CALICO_MODEL_CONTEXT_WINDOWS"
 CALICO_DISPLAY_PERCENT_ENV = "CALICO_CONTEXT_DISPLAY_PERCENT"
 # coralline (a Claude Code statusline) keeps cross-session stores for its 5h/7d
@@ -509,6 +524,76 @@ def has_option(args: list[str], long_name: str, short_name: str | None = None) -
     return False
 
 
+def split_fast_flag(args: list[str]) -> tuple[bool, list[str]]:
+    """Consume the wrapper-only Fast flag when it is in the leading position."""
+    remaining = list(args)
+    if not remaining or remaining[0] != "--fast":
+        return False, remaining
+    if len(remaining) > 1 and remaining[1] in REMORA_BUILTIN_COMMANDS:
+        raise RemoraError(
+            f"--fast cannot be combined with remora command {remaining[1]!r}"
+        )
+    return True, remaining[1:]
+
+
+def reject_non_finite_json_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in parsed:
+            raise ValueError(f"duplicate JSON key: {key}")
+        parsed[key] = value
+    return parsed
+
+
+def apply_fast_mode(env: dict[str, str]) -> None:
+    """Merge the session-wide Fast service tier into a copied child environment."""
+    raw = env.get(CLAUDE_EXTRA_BODY_ENV, "")
+    if not isinstance(raw, str):
+        raise RemoraError(f"{CLAUDE_EXTRA_BODY_ENV} must contain a JSON object")
+    if not raw.strip():
+        body: dict[str, Any] = {}
+    else:
+        try:
+            parsed = json.loads(
+                raw,
+                parse_constant=reject_non_finite_json_constant,
+                object_pairs_hook=reject_duplicate_json_keys,
+            )
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise RemoraError(
+                f"{CLAUDE_EXTRA_BODY_ENV} must contain valid JSON without duplicate "
+                "keys when --fast is used"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise RemoraError(
+                f"{CLAUDE_EXTRA_BODY_ENV} must contain a JSON object when --fast is used"
+            )
+        body = parsed
+
+    if "service_tier" in body:
+        service_tier = body["service_tier"]
+        if not isinstance(service_tier, str) or service_tier not in FAST_ACCEPTED_SERVICE_TIERS:
+            raise RemoraError(
+                f"{CLAUDE_EXTRA_BODY_ENV}.service_tier conflicts with --fast; "
+                "only 'fast' or 'priority' is accepted"
+            )
+    body["service_tier"] = FAST_SERVICE_TIER
+    try:
+        serialized = json.dumps(
+            body, ensure_ascii=True, separators=(",", ":"), allow_nan=False
+        )
+    except (TypeError, ValueError) as exc:
+        raise RemoraError(
+            f"{CLAUDE_EXTRA_BODY_ENV} must contain valid JSON without duplicate "
+            "keys when --fast is used"
+        ) from exc
+    env[CLAUDE_EXTRA_BODY_ENV] = serialized
+
+
 def binary_contains_marker(claude_binary: str, marker: bytes) -> bool:
     resolved = shutil.which(claude_binary)
     if not resolved:
@@ -636,7 +721,11 @@ def prepare_coralline_config(env: dict[str, str], source_config: str) -> None:
 
 
 def build_launch(
-    config: dict[str, Any], claude_args: list[str], *, require_token: bool = True
+    config: dict[str, Any],
+    claude_args: list[str],
+    *,
+    require_token: bool = True,
+    fast: bool = False,
 ) -> tuple[list[str], dict[str, str]]:
     runtime = config.get("runtime", {})
     models = config["models"]
@@ -666,6 +755,8 @@ def build_launch(
         prefix.extend(["--append-system-prompt", load_orchestration_policy()])
 
     env = os.environ.copy()
+    if fast:
+        apply_fast_mode(env)
     source_config = coralline_source_config(env)
     env["REMORA_ACTIVE"] = "1"
     env["ANTHROPIC_BASE_URL"] = str(proxy["base_url"]).rstrip("/")
@@ -840,8 +931,12 @@ def doctor(config: dict[str, Any], online: bool) -> int:
     return 1 if failures else 0
 
 
-def dry_run(config: dict[str, Any], args: list[str]) -> None:
-    command, env = build_launch(config, args, require_token=False)
+def dry_run(config: dict[str, Any], args: list[str], *, fast: bool = False) -> None:
+    requested_fast, claude_args = split_fast_flag(args)
+    fast = fast or requested_fast
+    command, env = build_launch(
+        config, claude_args, require_token=False, fast=fast
+    )
     shown_env = {
         key: env[key]
         for key in [
@@ -861,6 +956,14 @@ def dry_run(config: dict[str, Any], args: list[str]) -> None:
         ]
         if key in env
     }
+    if fast:
+        # The live child receives the merged body, but previews must not disclose
+        # unrelated inherited fields or sentinel values.
+        shown_env[CLAUDE_EXTRA_BODY_ENV] = json.dumps(
+            {"service_tier": FAST_SERVICE_TIER},
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
     print(json.dumps({"environment": shown_env, "command": command}, ensure_ascii=False, indent=2))
 
 
@@ -876,11 +979,25 @@ commands:
   help               show this help
 
 Any other arguments are passed to the native claude executable.
+
+Fast mode (opt-in, session-only, all requests in the child session):
+  remora --fast [claude arguments...]
+  remora dry-run --fast [claude arguments...]
+
+Fast mode asks the configured gateway for service_tier=priority. It is off by
+default, may increase provider credit or usage, requires gateway support, and
+does not persist. Use dry-run to verify the synthesized child setting; unrelated
+inherited fields are redacted.
 """
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    try:
+        fast, args = split_fast_flag(args)
+    except RemoraError as exc:
+        print(f"remora: {exc}", file=sys.stderr)
+        return 2
     command = args[0] if args else ""
     if command in {"help", "--help", "-h"}:
         print(usage())
@@ -903,11 +1020,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(render_agents(config), ensure_ascii=False, indent=2))
             return 0
         if command == "dry-run":
-            dry_run(config, args[1:])
+            dry_run(config, args[1:], fast=fast)
             return 0
 
         source_config = coralline_source_config(os.environ.copy())
-        launch, env = build_launch(config, args)
+        launch, env = build_launch(config, args, fast=fast)
         prepare_coralline_config(env, source_config)
         os.execvpe(launch[0], launch, env)
     except RemoraError as exc:

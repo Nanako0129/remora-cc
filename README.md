@@ -17,6 +17,7 @@
 - [Install](#install)
 - [Configure](#configure)
 - [Use](#use)
+- [Fast mode](#fast-mode)
 - [Verify isolation](#verify-isolation)
 - [Questions and answers](#questions-and-answers)
 - [Operational notes](#operational-notes)
@@ -158,7 +159,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.10/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.11/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -170,7 +171,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.10 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.11 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```
@@ -233,6 +234,25 @@ remora -p 'summarize this repository'
 ```
 
 All unrecognized arguments pass through to `claude`. Explicit Claude flags win: supplying your own `--model` or `--agents` prevents remora from injecting that specific default.
+
+### Fast mode
+
+Fast mode is explicitly opt-in and session-only. Put `--fast` first after the
+wrapper name (or first after `dry-run`) to request `service_tier=priority` for
+all requests in that child session:
+
+```bash
+remora --fast --continue
+remora dry-run --fast --continue
+```
+
+It is off by default, does not persist, and may increase provider credit or
+usage. The configured Anthropic-compatible gateway must accept and forward the
+service tier; remora only injects it into the child request body. Stock
+CLIProxyAPI v7.2.80 was verified, which is a compatibility check rather than a
+minimum-version claim, and Fast mode does not bypass provider quotas. Use the
+dry-run form to verify the synthesized child setting: the preview shows only
+`{"service_tier":"priority"}` and redacts unrelated inherited fields.
 
 Useful diagnostics:
 

@@ -2,6 +2,14 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.11 - 2026-07-16
+
+Add an explicit, session-only Fast mode for GPT-5.6 gateway sessions. `remora --fast ...` and `remora dry-run --fast ...` consume the leading wrapper flag instead of forwarding it to Claude Code, then add `service_tier=priority` through the child-only `CLAUDE_CODE_EXTRA_BODY` environment variable. Default launches remain unchanged, the parent environment is never mutated, and the setting disappears when the remora child exits.
+
+Fast mode merges an inherited JSON object without discarding unrelated fields and normalizes the compatible `fast` and `priority` spellings to `priority`. It fails closed on malformed JSON, non-object values, duplicate keys, non-finite or overflowing numbers, and conflicting service tiers. Dry-run output reports only the synthesized service tier so unrelated inherited body fields are not disclosed.
+
+Document the provider-usage and gateway-support boundary in both READMEs and the architecture guide. Unit and live end-to-end coverage verify the flag lifecycle, merge and rejection contracts, parent isolation, sanitized preview, and a stock CLIProxyAPI v7.2.80 request path carrying `service_tier=priority` to GPT-5.6 Sol. The compatibility observation is not a minimum-version guarantee, latency claim, quota bypass, or proof that every bridge response will echo the effective tier.
+
 ## 0.1.10 - 2026-07-15
 
 Complete remora's session-owned pilotfish roster. remora now supplies all eight current role names through its dynamic `--agents` document, adding `plan-verifier` and `security-reviewer` so Claude Code no longer fills those gaps from a globally installed pilotfish configuration. The session-level definitions keep the OpenAI model and effort map authoritative inside remora while leaving native Claude configuration unchanged.

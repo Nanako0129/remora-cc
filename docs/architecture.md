@@ -28,6 +28,7 @@ flowchart TD
 | Model defaults | Sets the three documented `ANTHROPIC_DEFAULT_*_MODEL` variables in the child | Internal Claude tiers resolve to gateway model names |
 | Routing allowlist | Adds every configured gateway id to the session's `availableModels` | Claude does not silently inherit the main model for an excluded subagent id |
 | Global override | Removes `CLAUDE_CODE_SUBAGENT_MODEL` from the copied child environment by default | One global variable cannot collapse every role back to one model |
+| Optional Fast body | When `--fast` is the first wrapper argument, validates and merges `service_tier=priority` into the copied child `CLAUDE_CODE_EXTRA_BODY` | Fast is session-only and does not mutate the parent environment or persist state |
 
 Claude Code's precedence places dynamic `--agents` below managed agents but above project, user, and plugin agents. remora therefore defines the complete current pilotfish roster, including `plan-verifier` and `security-reviewer`; leaving either name absent would let an installed user-level pilotfish definition remain active. A managed organization policy can still prevent or replace a remora role; remora deliberately does not bypass managed policy.
 
@@ -46,6 +47,9 @@ sequenceDiagram
     U->>R: remora --continue
     R->>R: Load and validate TOML
     R->>R: Combine role prompts with model map
+    opt Fast mode
+        R->>R: Validate and merge child-only service_tier=priority body
+    end
     R->>S: Read gateway token
     S-->>R: Token on stdout or environment
     R->>C: exec claude --settings ... --model ... --agents ... --append-system-prompt ...
@@ -87,6 +91,15 @@ The policy change is backed by the public [dispatch-brake experiment](https://gi
 ## Gateway semantics
 
 Claude Code speaks the Anthropic Messages protocol, while the selected models may be OpenAI models. The gateway owns protocol translation, OAuth, model aliases, cooldown, retries, and account selection. remora owns none of those concerns; it only chooses the gateway-visible model string for each role.
+
+Fast mode is the same narrow boundary: remora optionally injects
+`service_tier=priority` into the copied child `CLAUDE_CODE_EXTRA_BODY`, while the
+gateway remains responsible for accepting, translating, billing, and enforcing
+that request option. It applies to every request in that child session only,
+is off by default, and may consume additional provider credit or usage. Stock
+CLIProxyAPI v7.2.80 was verified; this is a compatibility check, not a minimum
+version claim or a quota bypass. `remora dry-run --fast ...` exposes only a
+sanitized synthesized body so inherited fields are not disclosed.
 
 Codex active-turn continuity also crosses this boundary. Native Codex preserves server-issued turn state across tool continuations, but the stock CLIProxyAPI Claude bridge does not currently retain that state. This can make a remora turn stop at a subscription allowance boundary before native Codex would stop under backend fair-use rules. The confirmed source evidence, responsibility split, non-solutions, and acceptance test are documented in [Preserving Codex Active-Turn Fair Use Through the Claude Bridge](./codex-active-turn-fair-use.md).
 

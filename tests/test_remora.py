@@ -93,6 +93,156 @@ class RemoraTests(unittest.TestCase):
         self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", env)
         self.assertEqual(os.environ["CLAUDE_CODE_SUBAGENT_MODEL"], "wrong")
 
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_fast_mode_adds_priority_body_without_parent_mutation(self) -> None:
+        _, env = remora.build_launch(self.config, [], require_token=False, fast=True)
+        self.assertEqual(
+            json.loads(env[remora.CLAUDE_EXTRA_BODY_ENV]),
+            {"service_tier": "priority"},
+        )
+        self.assertNotIn(remora.CLAUDE_EXTRA_BODY_ENV, os.environ)
+
+    @mock.patch.dict(
+        os.environ,
+        {remora.CLAUDE_EXTRA_BODY_ENV: " \t\n "},
+        clear=True,
+    )
+    def test_fast_mode_treats_blank_body_as_empty(self) -> None:
+        _, env = remora.build_launch(self.config, [], require_token=False, fast=True)
+        self.assertEqual(
+            json.loads(env[remora.CLAUDE_EXTRA_BODY_ENV]),
+            {"service_tier": "priority"},
+        )
+
+    def test_fast_mode_merges_inherited_body_and_preserves_parent(self) -> None:
+        inherited = json.dumps(
+            {"sentinel": "keep-me", "nested": {"enabled": True}, "service_tier": "fast"}
+        )
+        with mock.patch.dict(
+            os.environ,
+            {remora.CLAUDE_EXTRA_BODY_ENV: inherited},
+            clear=True,
+        ):
+            _, env = remora.build_launch(
+                self.config, [], require_token=False, fast=True
+            )
+            self.assertEqual(
+                json.loads(env[remora.CLAUDE_EXTRA_BODY_ENV]),
+                {
+                    "sentinel": "keep-me",
+                    "nested": {"enabled": True},
+                    "service_tier": "priority",
+                },
+            )
+            self.assertEqual(os.environ[remora.CLAUDE_EXTRA_BODY_ENV], inherited)
+
+    def test_fast_mode_accepts_and_normalizes_fast_or_priority(self) -> None:
+        for service_tier in ("fast", "priority"):
+            with self.subTest(service_tier=service_tier):
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        remora.CLAUDE_EXTRA_BODY_ENV: json.dumps(
+                            {"service_tier": service_tier}
+                        )
+                    },
+                    clear=True,
+                ):
+                    _, env = remora.build_launch(
+                        self.config, [], require_token=False, fast=True
+                    )
+                self.assertEqual(
+                    json.loads(env[remora.CLAUDE_EXTRA_BODY_ENV])["service_tier"],
+                    "priority",
+                )
+
+    def test_fast_mode_rejects_malformed_non_object_and_conflicting_body(self) -> None:
+        cases = [
+            ("{malformed", "valid JSON"),
+            ('{"value":NaN}', "valid JSON"),
+            ('{"value":Infinity}', "valid JSON"),
+            ('{"value":-Infinity}', "valid JSON"),
+            ('{"nested":{"value":NaN}}', "valid JSON"),
+            ('{"value":1e9999}', "valid JSON"),
+            ('{"service_tier":"standard","service_tier":"fast"}', "valid JSON"),
+            ('{"nested":{"value":1,"value":2}}', "valid JSON"),
+            ("[]", "JSON object"),
+            (json.dumps({"service_tier": "standard"}), "conflicts"),
+            (json.dumps({"service_tier": 1}), "conflicts"),
+        ]
+        for raw, message in cases:
+            with self.subTest(raw=raw):
+                with mock.patch.dict(
+                    os.environ,
+                    {remora.CLAUDE_EXTRA_BODY_ENV: raw},
+                    clear=True,
+                ):
+                    with self.assertRaisesRegex(remora.RemoraError, message):
+                        remora.build_launch(
+                            self.config, [], require_token=False, fast=True
+                        )
+
+    def test_default_mode_passes_inherited_body_through_without_parsing(self) -> None:
+        inherited = "not-json-and-should-stay-opaque"
+        with mock.patch.dict(
+            os.environ,
+            {remora.CLAUDE_EXTRA_BODY_ENV: inherited},
+            clear=True,
+        ):
+            _, env = remora.build_launch(self.config, [], require_token=False)
+        self.assertEqual(env[remora.CLAUDE_EXTRA_BODY_ENV], inherited)
+
+    def test_live_fast_flag_is_stripped_before_forwarding(self) -> None:
+        with (
+            mock.patch.object(remora, "load_config", return_value=self.config),
+            mock.patch.object(
+                remora, "build_launch", return_value=(["claude"], {})
+            ) as build,
+            mock.patch.object(remora, "prepare_coralline_config"),
+            mock.patch.object(remora.os, "execvpe"),
+        ):
+            self.assertEqual(remora.main(["--fast", "--continue", "prompt"]), 0)
+        build.assert_called_once_with(
+            self.config, ["--continue", "prompt"], fast=True
+        )
+
+    def test_fast_flag_rejects_leading_remora_builtin(self) -> None:
+        with mock.patch.object(remora, "load_config") as load:
+            self.assertEqual(remora.main(["--fast", "doctor"]), 2)
+        load.assert_not_called()
+
+    def test_dry_run_fast_flag_is_stripped_and_body_is_redacted(self) -> None:
+        inherited = json.dumps({"sentinel": "do-not-print", "nested": {"x": 1}})
+        output = io.StringIO()
+        with mock.patch.dict(
+            os.environ,
+            {remora.CLAUDE_EXTRA_BODY_ENV: inherited},
+            clear=True,
+        ), redirect_stdout(output):
+            remora.dry_run(self.config, ["--fast", "--continue"])
+        payload = json.loads(output.getvalue())
+        self.assertNotIn("--fast", payload["command"])
+        self.assertEqual(payload["command"][-1], "--continue")
+        self.assertEqual(
+            json.loads(payload["environment"][remora.CLAUDE_EXTRA_BODY_ENV]),
+            {"service_tier": "priority"},
+        )
+        self.assertNotIn("do-not-print", output.getvalue())
+        self.assertNotIn("nested", output.getvalue())
+
+    def test_dry_run_fast_flag_rejects_leading_remora_builtin(self) -> None:
+        with self.assertRaisesRegex(remora.RemoraError, "cannot be combined"):
+            remora.dry_run(self.config, ["--fast", "agents"])
+
+    @mock.patch.dict(
+        os.environ,
+        {remora.CLAUDE_EXTRA_BODY_ENV: '{"value":1e9999}'},
+        clear=True,
+    )
+    def test_main_dry_run_fast_fails_closed_on_overflowing_number(self) -> None:
+        with mock.patch.object(remora, "load_config", return_value=self.config):
+            self.assertEqual(remora.main(["dry-run", "--fast"]), 2)
+
     def test_named_roles_are_the_only_source_of_their_models(self) -> None:
         policy = remora.load_orchestration_policy()
         for role in remora.load_agent_definitions():

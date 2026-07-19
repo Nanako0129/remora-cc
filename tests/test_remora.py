@@ -333,6 +333,15 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("asking the worker to rediscover the investigation", policy)
         self.assertIn("eligible rather than mandatory", policy)
 
+    def test_policy_batches_recurring_small_work(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("recurrence is their blind spot", policy)
+        self.assertIn("about three times", policy)
+        self.assertIn("keep only per-item triage and acceptance", policy)
+        self.assertIn("not a single unknown bug", policy)
+        self.assertIn("feature or PR closure", policy)
+        self.assertIn("two `REVISE` rounds per Plan", policy)
+
     def test_policy_preserves_positive_delegation_paths(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("choose by net benefit", policy)

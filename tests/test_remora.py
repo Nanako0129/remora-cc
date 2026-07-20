@@ -340,6 +340,52 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("asking the worker to rediscover the investigation", policy)
         self.assertIn("eligible rather than mandatory", policy)
 
+    def test_policy_uses_backend_neutral_recurrence_conditions(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("recurrence requires a stable brief", policy)
+        self.assertIn("one-shot brief can completely describe", policy)
+        self.assertIn("remaining items are independent and the same shape", policy)
+        self.assertIn("Delegation is conditional, not mandatory", policy)
+        self.assertIn("per-item triage, exceptions, integration, and acceptance", policy)
+        self.assertIn("already-diagnosed review finding with a known remedy", policy)
+        self.assertIn("Execution work, not an unknown-bug discovery task", policy)
+        self.assertNotIn("about three times", policy)
+        self.assertNotIn("plan documents", policy)
+
+    def test_policy_verifies_at_a_coherent_boundary(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("smallest coherent integration boundary", policy)
+        self.assertIn("Tests, builds, and static checks are intermediate evidence", policy)
+        self.assertIn("not a universal substitute for fresh verification", policy)
+        self.assertIn("cross-language or FFI seam", policy)
+        self.assertIn("serialization or pre-aggregation data boundary", policy)
+        self.assertIn("irreversible operation", policy)
+        self.assertNotIn("feature or PR closure", policy)
+
+    def test_policy_requires_plan_convergence_or_escalation(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("Do not resubmit a substantially unchanged Plan", policy)
+        self.assertIn("material revision or new evidence", policy)
+        self.assertIn("simplify it", policy)
+        self.assertIn("surface the blocker to the user", policy)
+        self.assertIn("defer the blocked scope", policy)
+        self.assertIn("Never silently overrule", policy)
+        self.assertNotIn("two `REVISE` rounds per Plan", policy)
+
+    def test_completed_recon_output_is_collected_without_rerunning(self) -> None:
+        policy = remora.load_orchestration_policy()
+        agents = remora.load_agent_definitions()
+        self.assertIn("final message is the deliverable for that run", policy)
+        self.assertIn("result collection and continuation are separate operations", policy)
+        self.assertIn("never resume or re-dispatch a finished agent", policy)
+        for name in ("Explore", "scout"):
+            with self.subTest(name=name):
+                prompt = agents[name]["prompt"]
+                self.assertIn("final message for each run", prompt)
+                self.assertIn("only result the orchestrator receives", prompt)
+                self.assertIn("genuinely new follow-up work", prompt)
+                self.assertIn("do not repeat a completed", prompt)
+
     def test_policy_preserves_positive_delegation_paths(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("choose by net benefit", policy)

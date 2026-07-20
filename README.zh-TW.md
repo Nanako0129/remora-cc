@@ -30,6 +30,8 @@
 
 remora 只替一個 child `claude` process 注入 `--agents` JSON、session-only 編排補充指令與 gateway 環境變數。Claude Code 官方把 `--agents` 定義為只存在於當前 session 的 agent source；它可以暫時覆蓋同名的 project/user agent，但不會寫入磁碟。remora 現在刻意涵蓋 pilotfish 目前全部八個角色名稱，包括 `plan-verifier` 與 `security-reviewer`，因此即使已全域安裝 pilotfish，也不會再由 user-level 定義補上 remora 漏掉的角色。編排補充指令採用 phase-aware dispatch brake：Discovery 先穩定問題、證據格式與停止條件，不假裝最終實作已知；main session 再綜整一份 Plan、在需要時等待明確批准、只派出契約穩定的執行工作，最後以 fresh verification 關閉非平凡工作。通過各 phase gate 後再比較整體淨效益；即使直接做稍快，只要範圍明確的 Luna worker 能實質節省 Sol 額度，仍可委派。
 
+Recurring execution 改用條件判斷，不設固定重複次數：剩餘工作必須彼此獨立、形式相同，且能由一份 stable brief 完整交代 ownership 與逐項 acceptance，才會批次委派。Fresh verification 放在 smallest coherent integration boundary，tests 與 builds 保留為中間證據，高風險 seam 則提早驗證。沒有實質修改的 Plan 不會重送。Scout 與 Explore 完成後，main session 直接從 tracked task 取得 final output，不會為了收回既有報告而 resume 或重跑 agent。
+
 [Baton](https://github.com/cablate/baton) 這類 delegation planner 可以合成在角色層上方：Baton 規劃問題、拓撲、worker 數量、ownership、順序、預算與停止條件；remora 仍唯一掌管命名角色、模型路由、leaf 邊界、批准與 verifier 詞彙。完整雙 turn 相容性 Gate、被拒絕的候選版本與原始 prompts 已[公開並可重現](./benchmarks/baton-compatibility/README.zh-TW.md)。
 
 | 項目 | 原生 `claude` | `remora` session |

@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 import urllib.error
 import urllib.parse
@@ -76,6 +77,49 @@ CALICO_ACTIVE_TURN_MARKERS = (
     b"x-calico-active-turn-version",
 )
 GATEWAY_ACTIVE_TURN_HEADER = "X-CLIProxyAPI-Codex-Active-Turn"
+SETTINGS_FILE_ENV = "_REMORA_SETTINGS_FILE"
+SETTINGS_GUARD_FD_ENV = "_REMORA_SETTINGS_GUARD_FD"
+SETTINGS_CLEANUP_SCRIPT = """\
+import os
+import sys
+
+if os.fork():
+    os._exit(0)
+fd = int(sys.argv[1])
+path = sys.argv[2]
+try:
+    while os.read(fd, 4096):
+        pass
+finally:
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+"""
+PROTECTED_SETTINGS_ENV = frozenset(
+    {
+        "REMORA_ACTIVE",
+        "REMORA_AUTH_TOKEN",
+        COMPOSE_SYSTEM_PROMPT_ENV,
+        CALLER_SYSTEM_PROMPT_ENV,
+        SETTINGS_FILE_ENV,
+        SETTINGS_GUARD_FD_ENV,
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_AUTH_TOKEN",
+        *MODEL_ENV.values(),
+        "CLAUDE_CODE_SUBAGENT_MODEL",
+        CLAUDE_EXTRA_BODY_ENV,
+        AUTO_COMPACT_ENV,
+        AUTO_COMPACT_PERCENT_ENV,
+        "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY",
+        "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
+        "ENABLE_TOOL_SEARCH",
+        CALICO_CONTEXT_MAP_ENV,
+        CALICO_DISPLAY_PERCENT_ENV,
+        "CORALLINE_CONFIG",
+        *CORALLINE_STORE_ENV,
+    }
+)
 
 
 class RemoraError(RuntimeError):
@@ -526,7 +570,9 @@ def has_option(args: list[str], long_name: str, short_name: str | None = None) -
     return False
 
 
-def extract_option(args: list[str], name: str) -> tuple[str | None, list[str]]:
+def extract_option(
+    args: list[str], name: str, *, allow_leading_hyphen: bool = False
+) -> tuple[str | None, list[str]]:
     value: str | None = None
     remaining: list[str] = []
     index = 0
@@ -538,9 +584,14 @@ def extract_option(args: list[str], name: str) -> tuple[str | None, list[str]]:
         if arg == name:
             if value is not None:
                 raise RemoraError(f"{name} may only be specified once")
-            if index + 1 >= len(args) or args[index + 1].startswith("-"):
+            if index + 1 >= len(args):
                 raise RemoraError(f"{name} requires a value")
-            value = args[index + 1]
+            next_arg = args[index + 1]
+            if next_arg == "--" or (
+                not allow_leading_hyphen and next_arg.startswith("-")
+            ):
+                raise RemoraError(f"{name} requires a value")
+            value = next_arg
             index += 2
             continue
         if arg.startswith(f"{name}="):
@@ -587,6 +638,94 @@ def merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, 
             else value
         )
     return merged
+
+
+def sanitize_caller_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    if "env" not in settings:
+        return settings
+    caller_env = settings["env"]
+    if not isinstance(caller_env, dict):
+        raise RemoraError("--settings env must contain a JSON object")
+    sanitized = dict(settings)
+    sanitized["env"] = {
+        key: value
+        for key, value in caller_env.items()
+        if key not in PROTECTED_SETTINGS_ENV
+    }
+    return sanitized
+
+
+def start_settings_cleanup_watcher(path: str) -> int:
+    read_fd, guard_fd = os.pipe()
+    started = False
+    try:
+        subprocess.run(
+            [sys.executable, "-c", SETTINGS_CLEANUP_SCRIPT, str(read_fd), path],
+            check=True,
+            close_fds=True,
+            pass_fds=(read_fd,),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        os.set_inheritable(guard_fd, True)
+        started = True
+        return guard_fd
+    finally:
+        os.close(read_fd)
+        if not started:
+            os.close(guard_fd)
+
+
+def temporary_settings_file(serialized: str) -> tuple[str, int]:
+    fd, path = tempfile.mkstemp(prefix="remora-settings-", suffix=".json")
+    guard_fd: int | None = None
+    try:
+        os.fchmod(fd, 0o600)
+        guard_fd = start_settings_cleanup_watcher(path)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(serialized)
+        return path, guard_fd
+    except BaseException as exc:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            Path(path).unlink(missing_ok=True)
+        finally:
+            if guard_fd is not None:
+                os.close(guard_fd)
+        if isinstance(exc, (OSError, subprocess.SubprocessError)):
+            raise RemoraError("cannot prepare secure --settings file") from exc
+        raise
+
+
+def take_settings_resources(env: dict[str, str]) -> tuple[str | None, int | None]:
+    path = env.pop(SETTINGS_FILE_ENV, None)
+    guard = env.pop(SETTINGS_GUARD_FD_ENV, None)
+    return path, int(guard) if guard is not None else None
+
+
+def close_settings_resources(path: str | None, guard_fd: int | None) -> None:
+    try:
+        if path is not None:
+            Path(path).unlink(missing_ok=True)
+    finally:
+        if guard_fd is not None:
+            os.close(guard_fd)
+
+
+def close_launch_resources(env: dict[str, str]) -> None:
+    close_settings_resources(*take_settings_resources(env))
+
+
+def exec_launch(command: list[str], env: dict[str, str]) -> None:
+    resources = take_settings_resources(env)
+    try:
+        os.execvpe(command[0], command, env)
+    finally:
+        close_settings_resources(*resources)
 
 
 def load_prompt_file(value: str) -> str:
@@ -805,7 +944,11 @@ def build_launch(
     proxy = config["proxy"]
     claude_bin = str(runtime.get("claude_binary", "claude")).strip() or "claude"
     settings_value, args = extract_option(claude_args, "--settings")
-    settings = load_settings(settings_value) if settings_value is not None else {}
+    settings = (
+        sanitize_caller_settings(load_settings(settings_value))
+        if settings_value is not None
+        else {}
+    )
     settings = merge_settings(settings, routing_settings(config))
     try:
         serialized_settings = json.dumps(
@@ -822,8 +965,12 @@ def build_launch(
         prefix.extend(["--agents", compact])
 
     if os.environ.get(COMPOSE_SYSTEM_PROMPT_ENV, "").strip() == "1":
-        inline_prompt, args = extract_option(args, "--append-system-prompt")
-        prompt_file, args = extract_option(args, "--append-system-prompt-file")
+        inline_prompt, args = extract_option(
+            args, "--append-system-prompt", allow_leading_hyphen=True
+        )
+        prompt_file, args = extract_option(
+            args, "--append-system-prompt-file", allow_leading_hyphen=True
+        )
         bridged_prompt = os.environ.get(CALLER_SYSTEM_PROMPT_ENV)
         caller_sources = sum(
             source is not None for source in (inline_prompt, prompt_file, bridged_prompt)
@@ -854,6 +1001,8 @@ def build_launch(
 
     env = os.environ.copy()
     env.pop(CALLER_SYSTEM_PROMPT_ENV, None)
+    env.pop(SETTINGS_FILE_ENV, None)
+    env.pop(SETTINGS_GUARD_FD_ENV, None)
     if fast:
         apply_fast_mode(env)
     source_config = coralline_source_config(env)
@@ -912,7 +1061,21 @@ def build_launch(
         env.pop(CALICO_CONTEXT_MAP_ENV, None)
         env.pop(CALICO_DISPLAY_PERCENT_ENV, None)
 
-    return [claude_bin, *prefix, *args], env
+    command = [claude_bin, *prefix, *args]
+    if settings_value is None:
+        return command, env
+
+    settings_path, guard_fd = temporary_settings_file(serialized_settings)
+    handed_off = False
+    try:
+        command[command.index("--settings") + 1] = settings_path
+        env[SETTINGS_FILE_ENV] = settings_path
+        env[SETTINGS_GUARD_FD_ENV] = str(guard_fd)
+        handed_off = True
+        return command, env
+    finally:
+        if not handed_off:
+            close_settings_resources(settings_path, guard_fd)
 
 
 def print_agents(config: dict[str, Any]) -> None:
@@ -1036,34 +1199,43 @@ def dry_run(config: dict[str, Any], args: list[str], *, fast: bool = False) -> N
     command, env = build_launch(
         config, claude_args, require_token=False, fast=fast
     )
-    shown_env = {
-        key: env[key]
-        for key in [
-            "REMORA_ACTIVE",
-            "ANTHROPIC_BASE_URL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY",
-            "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
-            "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
-            "CALICO_MODEL_CONTEXT_WINDOWS",
-            "CALICO_CONTEXT_DISPLAY_PERCENT",
-            "ENABLE_TOOL_SEARCH",
-            "CORALLINE_CONFIG",
-            *CORALLINE_STORE_ENV,
-        ]
-        if key in env
-    }
-    if fast:
-        # The live child receives the merged body, but previews must not disclose
-        # unrelated inherited fields or sentinel values.
-        shown_env[CLAUDE_EXTRA_BODY_ENV] = json.dumps(
-            {"service_tier": FAST_SERVICE_TIER},
-            ensure_ascii=True,
-            separators=(",", ":"),
+    try:
+        shown_env = {
+            key: env[key]
+            for key in [
+                "REMORA_ACTIVE",
+                "ANTHROPIC_BASE_URL",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY",
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+                "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
+                "CALICO_MODEL_CONTEXT_WINDOWS",
+                "CALICO_CONTEXT_DISPLAY_PERCENT",
+                "ENABLE_TOOL_SEARCH",
+                "CORALLINE_CONFIG",
+                *CORALLINE_STORE_ENV,
+            ]
+            if key in env
+        }
+        if fast:
+            # The live child receives the merged body, but previews must not disclose
+            # unrelated inherited fields or sentinel values.
+            shown_env[CLAUDE_EXTRA_BODY_ENV] = json.dumps(
+                {"service_tier": FAST_SERVICE_TIER},
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+        print(
+            json.dumps(
+                {"environment": shown_env, "command": command},
+                ensure_ascii=False,
+                indent=2,
+            )
         )
-    print(json.dumps({"environment": shown_env, "command": command}, ensure_ascii=False, indent=2))
+    finally:
+        close_launch_resources(env)
 
 
 def usage() -> str:
@@ -1124,8 +1296,11 @@ def main(argv: list[str] | None = None) -> int:
 
         source_config = coralline_source_config(os.environ.copy())
         launch, env = build_launch(config, args, fast=fast)
-        prepare_coralline_config(env, source_config)
-        os.execvpe(launch[0], launch, env)
+        try:
+            prepare_coralline_config(env, source_config)
+            exec_launch(launch, env)
+        finally:
+            close_launch_resources(env)
     except RemoraError as exc:
         print(f"remora: {exc}", file=sys.stderr)
         return 2

@@ -6,8 +6,9 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
-from contextlib import redirect_stdout
+from contextlib import chdir, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -17,6 +18,11 @@ SPEC = importlib.util.spec_from_file_location("remora", ROOT / "src" / "remora.p
 assert SPEC and SPEC.loader
 remora = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(remora)
+
+
+def launch_settings(command: list[str]) -> dict[str, object]:
+    value = command[command.index("--settings") + 1]
+    return json.loads(value) if value.startswith("{") else json.loads(Path(value).read_text())
 
 
 class RemoraTests(unittest.TestCase):
@@ -67,7 +73,8 @@ class RemoraTests(unittest.TestCase):
             command, env = remora.build_launch(self.config, ["--continue"])
         self.assertEqual(command[0], "claude")
         self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-sol")
-        settings = json.loads(command[command.index("--settings") + 1])
+        self.assertTrue(command[command.index("--settings") + 1].startswith("{"))
+        settings = launch_settings(command)
         self.assertEqual(
             settings["availableModels"],
             ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
@@ -433,6 +440,10 @@ class RemoraTests(unittest.TestCase):
         policy = remora.load_orchestration_policy()
         for args, caller in (
             (["--append-system-prompt", "happy policy"], "happy policy"),
+            (
+                ["--append-system-prompt", "- **happy markdown**"],
+                "- **happy markdown**",
+            ),
             (["--append-system-prompt=happy equals"], "happy equals"),
         ):
             with self.subTest(args=args):
@@ -443,6 +454,13 @@ class RemoraTests(unittest.TestCase):
                     f"{caller}\n\n{policy}",
                 )
                 self.assertFalse(any(arg.startswith("--append-system-prompt=") for arg in command))
+
+        empty_command, _ = remora.build_launch(
+            self.config, ["--append-system-prompt", ""]
+        )
+        self.assertEqual(
+            empty_command[empty_command.index("--append-system-prompt") + 1], policy
+        )
 
     @mock.patch.dict(
         os.environ,
@@ -479,6 +497,12 @@ class RemoraTests(unittest.TestCase):
             empty_command, _ = remora.build_launch(
                 self.config, ["--append-system-prompt-file", str(path)]
             )
+            with chdir(directory):
+                hyphen_path = Path("-happy-prompt.md")
+                hyphen_path.write_text("hyphen file policy", encoding="utf-8")
+                hyphen_command, _ = remora.build_launch(
+                    self.config, ["--append-system-prompt-file", str(hyphen_path)]
+                )
 
         self.assertNotIn("--append-system-prompt-file", command)
         self.assertEqual(
@@ -487,6 +511,10 @@ class RemoraTests(unittest.TestCase):
         )
         self.assertEqual(
             empty_command[empty_command.index("--append-system-prompt") + 1], policy
+        )
+        self.assertEqual(
+            hyphen_command[hyphen_command.index("--append-system-prompt") + 1],
+            f"hyphen file policy\n\n{policy}",
         )
 
     @mock.patch.dict(
@@ -519,13 +547,12 @@ class RemoraTests(unittest.TestCase):
                 "only be specified once",
             ),
             (["--append-system-prompt"], "requires a value"),
-            (["--append-system-prompt", "--continue"], "requires a value"),
-            (["--append-system-prompt", "-c"], "requires a value"),
+            (["--append-system-prompt", "--"], "requires a value"),
             (["--append-system-prompt="], "requires a value"),
             (["--append-system-prompt-file"], "requires a value"),
-            (["--append-system-prompt-file", "--continue"], "requires a value"),
-            (["--append-system-prompt-file", "-c"], "requires a value"),
+            (["--append-system-prompt-file", "--"], "requires a value"),
             (["--append-system-prompt-file="], "requires a value"),
+            (["--append-system-prompt-file", ""], "cannot read"),
             (
                 ["--append-system-prompt-file", "/missing/remora-happy-policy.md"],
                 "cannot read",
@@ -551,34 +578,267 @@ class RemoraTests(unittest.TestCase):
                         remora.build_launch(self.config, args)
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
-    def test_settings_file_merges_with_routing_allowlist(self) -> None:
+    def test_caller_settings_use_guarded_file_and_hide_payload_from_argv(self) -> None:
+        secret = "happy-settings-secret"
+        created_paths: list[str] = []
+        watcher_started_before_write: list[bool] = []
+        real_mkstemp = tempfile.mkstemp
+        real_fdopen = os.fdopen
+        real_watcher = remora.start_settings_cleanup_watcher
+
+        def capture_mkstemp(*args: object, **kwargs: object) -> tuple[int, str]:
+            fd, path = real_mkstemp(*args, **kwargs)
+            created_paths.append(path)
+            return fd, path
+
+        def capture_watcher(path: str) -> int:
+            guard_fd = real_watcher(path)
+            watcher_started_before_write.append(True)
+            return guard_fd
+
+        def capture_fdopen(*args: object, **kwargs: object) -> object:
+            self.assertEqual(watcher_started_before_write, [True])
+            return real_fdopen(*args, **kwargs)
+
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "happy-hooks.json"
             path.write_text(
-                json.dumps({"hooks": {"SessionStart": [{"command": "happy hook"}]}}),
+                json.dumps(
+                    {
+                        "hooks": {"SessionStart": [{"command": "happy hook"}]},
+                        "env": {"HAPPY_UNOWNED": secret},
+                    }
+                ),
                 encoding="utf-8",
             )
-            command, _ = remora.build_launch(
-                self.config, ["--continue", "--settings", str(path)]
-            )
+            with (
+                mock.patch.object(
+                    remora.tempfile, "mkstemp", side_effect=capture_mkstemp
+                ),
+                mock.patch.object(
+                    remora,
+                    "start_settings_cleanup_watcher",
+                    side_effect=capture_watcher,
+                ),
+                mock.patch.object(remora.os, "fdopen", side_effect=capture_fdopen),
+            ):
+                command, env = remora.build_launch(
+                    self.config, ["--continue", "--settings", str(path)]
+                )
 
-        self.assertEqual(command.count("--settings"), 1)
-        settings = json.loads(command[command.index("--settings") + 1])
-        self.assertEqual(settings["hooks"]["SessionStart"][0]["command"], "happy hook")
-        self.assertEqual(
-            settings["availableModels"],
-            ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
-        )
-        self.assertNotIn(str(path), command)
+        settings_arg = command[command.index("--settings") + 1]
+        guard_fd = int(env[remora.SETTINGS_GUARD_FD_ENV])
+        try:
+            self.assertEqual(command.count("--settings"), 1)
+            self.assertEqual(settings_arg, env[remora.SETTINGS_FILE_ENV])
+            self.assertEqual(Path(settings_arg).stat().st_mode & 0o777, 0o600)
+            self.assertTrue(os.get_inheritable(guard_fd))
+            self.assertEqual(created_paths, [settings_arg])
+            self.assertEqual(watcher_started_before_write, [True])
+            self.assertNotIn(secret, "\n".join(command))
+            self.assertNotIn('"hooks"', settings_arg)
+            self.assertNotIn(str(path), command)
+
+            settings = launch_settings(command)
+            self.assertEqual(
+                settings["hooks"]["SessionStart"][0]["command"], "happy hook"
+            )
+            self.assertEqual(settings["env"]["HAPPY_UNOWNED"], secret)
+            self.assertEqual(
+                settings["availableModels"],
+                ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
+            )
+        finally:
+            remora.close_launch_resources(env)
+        self.assertFalse(Path(settings_arg).exists())
+        with self.assertRaises(OSError):
+            os.fstat(guard_fd)
+
+    def test_settings_cleanup_watcher_removes_file_on_guard_eof(self) -> None:
+        path, guard_fd = remora.temporary_settings_file('{"safe":true}')
+        os.close(guard_fd)
+        try:
+            for _ in range(100):
+                if not Path(path).exists():
+                    break
+                time.sleep(0.01)
+            self.assertFalse(Path(path).exists())
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_settings_payload_is_not_written_if_watcher_fails(self) -> None:
+        created_paths: list[str] = []
+        real_mkstemp = tempfile.mkstemp
+
+        def capture_mkstemp(*args: object, **kwargs: object) -> tuple[int, str]:
+            fd, path = real_mkstemp(*args, **kwargs)
+            created_paths.append(path)
+            return fd, path
+
+        with (
+            mock.patch.object(
+                remora.tempfile, "mkstemp", side_effect=capture_mkstemp
+            ),
+            mock.patch.object(
+                remora,
+                "start_settings_cleanup_watcher",
+                side_effect=OSError("watcher failed"),
+            ),
+            mock.patch.object(remora.os, "fdopen") as fdopen,
+            self.assertRaisesRegex(remora.RemoraError, "secure --settings"),
+        ):
+            remora.temporary_settings_file('{"secret":"not-written"}')
+
+        fdopen.assert_not_called()
+        self.assertEqual(len(created_paths), 1)
+        self.assertFalse(Path(created_paths[0]).exists())
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
     def test_inline_settings_equals_form_is_merged(self) -> None:
-        command, _ = remora.build_launch(
+        command, env = remora.build_launch(
             self.config, ['--settings={"permissions":{"allow":["Read"]}}']
         )
-        settings = json.loads(command[command.index("--settings") + 1])
-        self.assertEqual(settings["permissions"], {"allow": ["Read"]})
-        self.assertIn("gpt-5.6-luna", settings["availableModels"])
+        try:
+            settings = launch_settings(command)
+            self.assertEqual(settings["permissions"], {"allow": ["Read"]})
+            self.assertIn("gpt-5.6-luna", settings["availableModels"])
+        finally:
+            remora.close_launch_resources(env)
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_caller_settings_env_cannot_override_remora_owned_keys(self) -> None:
+        caller_env = {
+            key: f"caller-value-{index}"
+            for index, key in enumerate(sorted(remora.PROTECTED_SETTINGS_ENV))
+        }
+        caller_env["HAPPY_UNOWNED"] = "preserved"
+        command, env = remora.build_launch(
+            self.config,
+            ["--settings", json.dumps({"env": caller_env})],
+            require_token=False,
+            fast=True,
+        )
+        try:
+            settings = launch_settings(command)
+            self.assertEqual(settings["env"], {"HAPPY_UNOWNED": "preserved"})
+            self.assertEqual(env["REMORA_ACTIVE"], "1")
+            self.assertEqual(env["ANTHROPIC_BASE_URL"], "http://127.0.0.1:8317")
+            self.assertEqual(
+                env[remora.CLAUDE_EXTRA_BODY_ENV], '{"service_tier":"priority"}'
+            )
+            self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", env)
+        finally:
+            remora.close_launch_resources(env)
+
+    def test_settings_env_requires_an_object(self) -> None:
+        for value in (None, [], "invalid", 1):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(remora.RemoraError, "env.*JSON object"):
+                    remora.build_launch(
+                        self.config,
+                        ["--settings", json.dumps({"env": value})],
+                        require_token=False,
+                    )
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_dry_run_hides_caller_settings_and_cleans_file(self) -> None:
+        secret = "dry-run-settings-secret"
+        resources: list[tuple[str, int]] = []
+        real_temporary_settings_file = remora.temporary_settings_file
+
+        def capture_resource(serialized: str) -> tuple[str, int]:
+            resource = real_temporary_settings_file(serialized)
+            resources.append(resource)
+            return resource
+
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                remora, "temporary_settings_file", side_effect=capture_resource
+            ),
+            redirect_stdout(output),
+        ):
+            remora.dry_run(
+                self.config,
+                ["--settings", json.dumps({"env": {"HAPPY_UNOWNED": secret}})],
+            )
+
+        shown = output.getvalue()
+        payload = json.loads(shown)
+        self.assertEqual(len(resources), 1)
+        path, guard_fd = resources[0]
+        self.assertNotIn(secret, shown)
+        self.assertEqual(
+            payload["command"][payload["command"].index("--settings") + 1], path
+        )
+        self.assertNotIn(remora.SETTINGS_FILE_ENV, payload["environment"])
+        self.assertNotIn(remora.SETTINGS_GUARD_FD_ENV, payload["environment"])
+        self.assertFalse(Path(path).exists())
+        with self.assertRaises(OSError):
+            os.fstat(guard_fd)
+
+    def test_exec_launch_strips_tracking_metadata_and_cleans_on_return(self) -> None:
+        path, guard_fd = remora.temporary_settings_file('{"safe":true}')
+        command = ["claude", "--settings", path]
+        env = {
+            remora.SETTINGS_FILE_ENV: path,
+            remora.SETTINGS_GUARD_FD_ENV: str(guard_fd),
+            "HAPPY_UNOWNED": "preserved",
+        }
+
+        def inspect_exec(
+            executable: str, argv: list[str], child_env: dict[str, str]
+        ) -> None:
+            self.assertEqual(executable, "claude")
+            self.assertEqual(argv, command)
+            self.assertNotIn(remora.SETTINGS_FILE_ENV, child_env)
+            self.assertNotIn(remora.SETTINGS_GUARD_FD_ENV, child_env)
+            self.assertEqual(child_env["HAPPY_UNOWNED"], "preserved")
+            self.assertTrue(os.get_inheritable(guard_fd))
+            self.assertEqual(Path(path).read_text(), '{"safe":true}')
+
+        with mock.patch.object(remora.os, "execvpe", side_effect=inspect_exec):
+            remora.exec_launch(command, env)
+        self.assertFalse(Path(path).exists())
+        with self.assertRaises(OSError):
+            os.fstat(guard_fd)
+
+    def test_build_launch_cleans_resource_if_handoff_fails(self) -> None:
+        resources: list[tuple[str, int]] = []
+        real_temporary_settings_file = remora.temporary_settings_file
+
+        def capture_resource(serialized: str) -> tuple[str, int]:
+            resource = real_temporary_settings_file(serialized)
+            resources.append(resource)
+            return resource
+
+        class HandoffFailureEnv(dict[str, str]):
+            def __setitem__(self, key: str, value: str) -> None:
+                if key == remora.SETTINGS_GUARD_FD_ENV:
+                    raise RuntimeError("handoff failed")
+                super().__setitem__(key, value)
+
+        class ParentEnv(dict[str, str]):
+            def copy(self) -> HandoffFailureEnv:
+                return HandoffFailureEnv(self)
+
+        parent_env = ParentEnv({"HOME": os.environ.get("HOME", str(Path.home()))})
+        with (
+            mock.patch.object(remora.os, "environ", parent_env),
+            mock.patch.object(
+                remora, "temporary_settings_file", side_effect=capture_resource
+            ),
+            self.assertRaisesRegex(RuntimeError, "handoff failed"),
+        ):
+            remora.build_launch(
+                self.config, ["--settings", "{}"], require_token=False
+            )
+
+        self.assertEqual(len(resources), 1)
+        path, guard_fd = resources[0]
+        self.assertFalse(Path(path).exists())
+        with self.assertRaises(OSError):
+            os.fstat(guard_fd)
 
     def test_settings_merge_is_recursive(self) -> None:
         self.assertEqual(
@@ -595,7 +855,12 @@ class RemoraTests(unittest.TestCase):
         )
 
     def test_settings_requires_one_json_object(self) -> None:
-        for args in (["--settings"], ["--settings", "--continue"], ["--settings", "-c"]):
+        for args in (
+            ["--settings"],
+            ["--settings", "--"],
+            ["--settings", "--continue"],
+            ["--settings", "-c"],
+        ):
             with self.subTest(args=args):
                 with self.assertRaisesRegex(remora.RemoraError, "requires a value"):
                     remora.build_launch(self.config, args, require_token=False)

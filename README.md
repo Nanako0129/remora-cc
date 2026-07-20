@@ -36,7 +36,7 @@ A delegation planner such as [Baton](https://github.com/cablate/baton) can compo
 | Command | Unchanged | Separate executable |
 | Anthropic login | Unchanged | Replaced only in the child environment |
 | `~/.claude/settings.json` | Never written | Still readable by Claude Code |
-| Additional settings | None | Child-only model allowlist passed with `--settings` |
+| Additional settings | None | Inline routing allowlist, or a merged caller document through a guarded `0600` temporary file |
 | `~/.claude/agents/` | Never written | Session agents take precedence by name |
 | Project `.claude/` | Never written | Continues to load normally |
 | Shell aliases/functions | Never written | None required |
@@ -67,9 +67,9 @@ The defaults mirror the working GPT-5.6 split that motivated this repository. Ev
 
 Claude Code's built-in aliases remain useful escape hatches: Opus defaults to Sol, Sonnet to Terra, and Haiku to Luna.
 
-Claude Code validates subagent models against `availableModels`. If a user's normal settings list only Claude aliases, a raw gateway id such as `gpt-5.6-luna` is otherwise rejected and silently inherits the Sol main model. remora prevents that fallback by passing a child-only additional settings document that allowlists every configured gateway model. If a caller also supplies `--settings` as a JSON file or inline object, remora merges it into the same additional-settings document instead of dropping either source. It does not write or replace the user's settings file, and managed organization policy still retains its normal higher precedence.
+Claude Code validates subagent models against `availableModels`. If a user's normal settings list only Claude aliases, a raw gateway id such as `gpt-5.6-luna` is otherwise rejected and silently inherits the Sol main model. remora prevents that fallback by passing a child-only additional settings document that allowlists every configured gateway model. If a caller also supplies `--settings` as a JSON file or inline object, remora merges it instead of dropping either source, removes any caller `env` entries owned by remora's gateway/model/session contract, and preserves other caller settings. The merged caller document is written to a unique `0600` temporary file, while a detached pipe watcher removes it when the Claude process exits or is killed; its full JSON and secrets therefore do not appear in the child argv or dry-run output. Routing-only settings remain inline. Use a JSON file rather than inline JSON when caller settings contain secrets, because inline values are already visible in the original remora command line. remora does not write or replace the user's settings file, and managed organization policy still retains its normal higher precedence.
 
-Wrappers such as Happy also append their own system prompt. Set `REMORA_COMPOSE_SYSTEM_PROMPT=1` when launching such a wrapper to combine its inline or file prompt first and remora's orchestration policy second into one child-only `--append-system-prompt`. Happy's Agent SDK adapter automatically bridges its remote append prompt to remora because the SDK otherwise sends that prompt through its initialize protocol and overrides executable CLI flags. Without this opt-in, explicit `--append-system-prompt*` arguments retain their existing behavior and replace remora's default policy.
+Wrappers such as Happy also append their own system prompt. Set `REMORA_COMPOSE_SYSTEM_PROMPT=1` when launching such a wrapper to combine its inline or file prompt first and remora's orchestration policy second into one child-only `--append-system-prompt`. A separated prompt value or prompt-file path may begin with `-`; `--` still ends remora's option scan. Happy's Agent SDK adapter automatically bridges its remote append prompt to remora because the SDK otherwise sends that prompt through its initialize protocol and overrides executable CLI flags. Without this opt-in, explicit `--append-system-prompt*` arguments retain their existing behavior and replace remora's default policy.
 
 The role definition is the only model source for a named agent. remora's orchestration policy therefore forbids passing `model` when invoking `Explore`, `scout`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`, `security-executor`, or any other existing named role: Claude Code gives an invocation-level model higher precedence and would bypass the role map. Only a truly ad-hoc agent with no role definition receives an explicit invocation model.
 
@@ -138,7 +138,7 @@ remora is not a hosted gateway, an OAuth account manager, an official OpenAI or 
 | Verifiable release | Bootstrap requires SHA-256 and GitHub artifact attestation; checksum-only mode needs an explicit downgrade |
 | No blind overwrite | Installer refuses unrelated executables and preserves existing user configuration |
 | Native Claude isolation | Installer and launcher never write `~/.claude`, replace `claude`, or read the Anthropic login |
-| Secret minimization | Gateway tokens come from an environment variable or direct credential command and are never printed |
+| Secret minimization | Gateway tokens are never printed; merged caller settings use a guarded `0600` temporary file instead of child argv, and remora-owned environment keys cannot be replaced through caller settings |
 | Reversible scope | Installation and runtime state stay in remora-owned XDG locations; uninstall removes code and runtime state, preserves config by default, and never touches native Claude |
 
 The gateway and upstream model still receive prompts and any source Claude Code sends them. Review the full [security policy](./SECURITY.md) and [gateway trust boundary](./docs/cliproxyapi.md) before using remora on sensitive repositories.
@@ -309,7 +309,7 @@ The strongest behavioral check is simply to run both commands. `remora agents` s
 | `Your input exceeds the context window` | The gateway metadata, Codex runtime catalog, and selected client mode disagree | Run Codex once to refresh `~/.codex/models_cache.json`, then run `remora doctor --online`; current Calico output should show `client_window=272000` |
 | Native Claude also uses the gateway | Gateway variables were exported globally in the shell | Remove global `ANTHROPIC_*` exports; let remora set them for its child |
 | A role is missing | An explicit `--agents` flag replaced remora's dynamic map | Remove that flag or merge the role into your supplied JSON |
-| `--settings must reference ...` | The supplied settings path is unreadable or its content is not one valid JSON object | Fix the file path or pass the object inline; remora accepts one `--settings` source and merges it with the routing allowlist |
+| `--settings must reference ...` | The supplied settings path is unreadable, its content is not one valid JSON object, or `env` is not an object | Fix the input shape; remora accepts one source, removes remora-owned `env` keys, and passes the merged result through a guarded `0600` temporary file |
 | A wrapper's prompt hides remora orchestration | The wrapper passes an explicit append prompt, which normally replaces remora's default | Launch it with `REMORA_COMPOSE_SYSTEM_PROMPT=1`; remora will forward caller content first and its policy second |
 | `claude.ai connectors are disabled` warning | Claude Code detected remora's child-only gateway auth instead of the native Claude login | Expected inside remora; run plain `claude` when claude.ai connectors are required |
 

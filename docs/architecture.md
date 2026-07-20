@@ -21,10 +21,11 @@ flowchart TD
 |---|---|---|
 | Process | Uses `execvpe` with a copied environment | Overrides disappear with the child |
 | Integration marker | Sets `REMORA_ACTIVE=1` in the copied environment | Status lines and hooks can identify remora without inspecting credentials or gateway URLs |
-| Settings | Writes no Claude settings; merges any caller JSON file or inline `--settings` with configured model ids into one child-only document | Native configuration remains authoritative outside remora while hooks and subagent validation both remain active |
+| Settings | Writes no Claude settings; routing-only JSON stays inline, while merged caller settings use a unique `0600` temporary file | Native configuration remains authoritative outside remora without exposing caller JSON in child argv or dry-run |
 | Agents | Sends all eight pilotfish-compatible role names in one JSON object through `--agents` | Claude Code scopes them to the current session and shadows same-name user roles |
 | Orchestration | Appends a phase-aware dispatch and dependency-scheduling policy | Discovery, Plan, Approval, Execution, and Verification use different stable contracts |
 | Authentication | Resolves a remora-specific token, then sets `ANTHROPIC_AUTH_TOKEN` only in the child | The user's Anthropic login is neither read nor replaced on disk |
+| Caller environment | Removes remora-owned gateway, model, session, Fast, context, concurrency, effort, tool-search, and coralline keys from caller settings `env` | The environment synthesized by `build_launch` remains the runtime source of truth while unrelated caller variables survive |
 | Model defaults | Sets the three documented `ANTHROPIC_DEFAULT_*_MODEL` variables in the child | Internal Claude tiers resolve to gateway model names |
 | Routing allowlist | Adds every configured gateway id to the session's `availableModels` | Claude does not silently inherit the main model for an excluded subagent id |
 | Global override | Removes `CLAUDE_CODE_SUBAGENT_MODEL` from the copied child environment by default | One global variable cannot collapse every role back to one model |
@@ -32,7 +33,7 @@ flowchart TD
 
 Claude Code's precedence places dynamic `--agents` below managed agents but above project, user, and plugin agents. remora therefore defines the complete current pilotfish roster, including `plan-verifier` and `security-reviewer`; leaving either name absent would let an installed user-level pilotfish definition remain active. A managed organization policy can still prevent or replace a remora role; remora deliberately does not bypass managed policy.
 
-Claude Code also applies `availableModels` to subagent definitions. In 2.1.207, an excluded custom gateway id silently falls back to the parent model. remora supplies its configured ids as an additional session-only allowlist. When a caller also passes one `--settings` JSON file or inline object, remora recursively merges the caller document first and then overlays its routing allowlist before forwarding the single additional-settings source Claude Code accepts. This keeps caller hooks active without losing routing control. It is a compatibility allowance, not a bypass of higher-precedence managed policy.
+Claude Code also applies `availableModels` to subagent definitions. In 2.1.207, an excluded custom gateway id silently falls back to the parent model. remora supplies its configured ids as an additional session-only allowlist. When a caller also passes one `--settings` JSON file or inline object, remora recursively merges the caller document first and then overlays its routing allowlist. Before serialization it requires `env` to be an object and removes keys owned by remora's child gateway/model/session contract, preserving unrelated caller variables. The merged document is written to a unique `0600` temporary file because Claude Code resolves `/dev/fd/N` back to the original pathname and rejects an already unlinked source. Before payload writing begins, remora starts a detached cleanup watcher and retains the write end of a guard pipe across `execvpe`; normal exit, failed launch, or process termination closes that pipe and removes the file. Parent-only path and guard metadata are stripped from the Claude environment. This keeps caller hooks active without losing routing control or placing the full document in the Claude child arguments. It is a compatibility allowance, not a bypass of higher-precedence managed policy.
 
 ## Launch sequence
 
@@ -52,7 +53,7 @@ sequenceDiagram
     end
     R->>S: Read gateway token
     S-->>R: Token on stdout or environment
-    R->>C: exec claude --settings ... --model ... --agents ... --append-system-prompt ...
+    R->>C: exec claude --settings inline-or-0600-temp-file --model ... --agents ... --append-system-prompt ...
     C->>G: POST /v1/messages
     G-->>C: Anthropic-compatible stream translated from OpenAI
 ```
@@ -63,7 +64,7 @@ The split follows capability and token volume rather than file ownership. Substa
 
 For every existing named role, its `--agents` definition is the sole model source. The orchestrator omits the Agent tool's invocation-level `model` field because Claude Code gives that field higher precedence than the role definition. An explicit invocation model is reserved for a truly ad-hoc agent with no named definition.
 
-Foreground versus background is a parent-orchestrator decision, so it cannot be enforced inside a leaf agent prompt. remora therefore appends a child-session-only policy: independent work and parallel fan-out use `run_in_background: true`; foreground execution is reserved for a result required by the main session's very next action when no other useful work can proceed. Explicit user `--append-system-prompt` or `--append-system-prompt-file` arguments replace this default unless `REMORA_COMPOSE_SYSTEM_PROMPT=1`; in that opt-in mode remora reads either caller source, places it before the orchestration policy, and forwards one inline append prompt. Agent SDK callers that would otherwise overwrite the CLI prompt during their initialize protocol can pass the caller text through the child-only `REMORA_CALLER_SYSTEM_PROMPT` bridge; remora consumes and removes that variable before launching the runtime.
+Foreground versus background is a parent-orchestrator decision, so it cannot be enforced inside a leaf agent prompt. remora therefore appends a child-session-only policy: independent work and parallel fan-out use `run_in_background: true`; foreground execution is reserved for a result required by the main session's very next action when no other useful work can proceed. Explicit user `--append-system-prompt` or `--append-system-prompt-file` arguments replace this default unless `REMORA_COMPOSE_SYSTEM_PROMPT=1`; in that opt-in mode remora reads either caller source, accepts separated values beginning with `-`, stops scanning at `--`, places caller content before the orchestration policy, and forwards one inline append prompt. Agent SDK callers that would otherwise overwrite the CLI prompt during their initialize protocol can pass the caller text through the child-only `REMORA_CALLER_SYSTEM_PROMPT` bridge; remora consumes and removes that variable before launching the runtime.
 
 Scheduling begins only after the current phase's dispatch brake. Discovery needs a stable question, allowed scope, evidence format, and stop condition; it does not require a pre-decided implementation outcome. The main session reconciles evidence and synthesizes one Plan. Large, architectural, risky, or explicitly plan-first work then waits for explicit approval before any implementation brief or source edit. Execution requires stable scope, exclusive ownership, constraints, done criteria, integration, and verification. Completed-work verification starts only when there is a concrete integrated claim to refute.
 

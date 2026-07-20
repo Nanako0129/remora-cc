@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.11"
+VERSION = "0.1.12"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"

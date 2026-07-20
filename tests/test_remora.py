@@ -751,6 +751,16 @@ class RemoraTests(unittest.TestCase):
         finally:
             remora.close_launch_resources(env)
 
+    def test_long_inline_settings_are_not_treated_as_a_path(self) -> None:
+        value = json.dumps({"env": {"LONG_VALUE": "x" * 4096}})
+        with mock.patch.object(
+            remora.Path,
+            "is_file",
+            side_effect=OSError(remora.errno.ENAMETOOLONG, "file name too long"),
+        ):
+            settings = remora.load_settings(value)
+        self.assertEqual(settings["env"]["LONG_VALUE"], "x" * 4096)
+
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_caller_settings_env_cannot_override_remora_owned_keys(self) -> None:
         caller_env = {

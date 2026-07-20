@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -20,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.12"
+VERSION = "0.1.13"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
@@ -610,9 +611,20 @@ def extract_option(
 def load_settings(value: str) -> dict[str, Any]:
     path = Path(value).expanduser()
     try:
-        raw = path.read_text(encoding="utf-8") if path.is_file() else value
-    except (OSError, ValueError) as exc:
-        raise RemoraError(f"cannot read --settings file {path}: {exc}") from exc
+        is_file = path.is_file()
+    except OSError as exc:
+        if exc.errno != errno.ENAMETOOLONG:
+            raise RemoraError(f"cannot read --settings file {path}: {exc}") from exc
+        is_file = False
+    except ValueError:
+        is_file = False
+    if is_file:
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            raise RemoraError(f"cannot read --settings file {path}: {exc}") from exc
+    else:
+        raw = value
     try:
         parsed = json.loads(
             raw,

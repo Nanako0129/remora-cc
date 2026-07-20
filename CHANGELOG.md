@@ -2,6 +2,12 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.13 - 2026-07-21
+
+Treat `ENAMETOOLONG` from a filesystem probe as evidence that a caller `--settings` value is inline JSON rather than an unreadable path. This preserves file-or-JSON behavior for large settings documents on Linux while keeping real file read errors actionable and invalid inline values subject to the existing strict JSON validation.
+
+Add a deterministic regression for the Linux failure that blocked the v0.1.12 release workflow. The v0.1.12 tag remains immutable and has no published Release assets; v0.1.13 supersedes it with the same policy and Happy integration scope plus this cross-platform parser fix.
+
 ## 0.1.12 - 2026-07-21
 
 Align the session-only orchestration addendum with pilotfish v1.3.0 without carrying over provider-specific numeric thresholds. Recurring work is batchable only when the remaining items are independent, the same shape, and fully described by one stable brief with ownership and per-item acceptance. A diagnosed review finding with a known remedy is Execution work, but delegation remains conditional and the main session retains diagnosis, exceptions, integration, and acceptance.

@@ -2,6 +2,14 @@
 
 All notable changes to remora are documented here.
 
+## Unreleased
+
+Align the session-only orchestration addendum with pilotfish v1.3.0 without carrying over provider-specific numeric thresholds. Recurring work is batchable only when the remaining items are independent, the same shape, and fully described by one stable brief with ownership and per-item acceptance. A diagnosed review finding with a known remedy is Execution work, but delegation remains conditional and the main session retains diagnosis, exceptions, integration, and acceptance.
+
+Move fresh outcome verification to the smallest coherent integration boundary where the complete claim can be independently refuted. Tests, builds, and static checks remain intermediate evidence; security, FFI, serialization, pre-aggregation, irreversible, and integration-blocking changes verify earlier. A substantially unchanged Plan is not resubmitted, and unresolved readiness disagreement must be simplified, surfaced, or deferred rather than silently overruled.
+
+Make completed read-only reconnaissance a pull-based result contract. `Explore` and `scout` now return one self-contained final deliverable per run; the main session collects it from the tracked task and reserves continuation for liveness, redirection, or genuinely new work. The motivating field observations came from remora sessions routed to GPT-5.6 and support these backend-neutral failure-mode guardrails, not universal repeat counts or native-Claude efficiency claims.
+
 ## 0.1.11 - 2026-07-16
 
 Add an explicit, session-only Fast mode for GPT-5.6 gateway sessions. `remora --fast ...` and `remora dry-run --fast ...` consume the leading wrapper flag instead of forwarding it to Claude Code, then add `service_tier=priority` through the child-only `CLAUDE_CODE_EXTRA_BODY` environment variable. Default launches remain unchanged, the parent environment is never mutated, and the setting disappears when the remora child exits.

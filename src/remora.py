@@ -39,6 +39,8 @@ DEFAULT_AUTO_COMPACT_PERCENT = 90
 AUTO_COMPACT_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 AUTO_COMPACT_PERCENT_ENV = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
 CLAUDE_EXTRA_BODY_ENV = "CLAUDE_CODE_EXTRA_BODY"
+COMPOSE_SYSTEM_PROMPT_ENV = "REMORA_COMPOSE_SYSTEM_PROMPT"
+CALLER_SYSTEM_PROMPT_ENV = "REMORA_CALLER_SYSTEM_PROMPT"
 FAST_SERVICE_TIER = "priority"
 FAST_ACCEPTED_SERVICE_TIERS = {"fast", FAST_SERVICE_TIER}
 REMORA_BUILTIN_COMMANDS = {
@@ -524,6 +526,77 @@ def has_option(args: list[str], long_name: str, short_name: str | None = None) -
     return False
 
 
+def extract_option(args: list[str], name: str) -> tuple[str | None, list[str]]:
+    value: str | None = None
+    remaining: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            remaining.extend(args[index:])
+            break
+        if arg == name:
+            if value is not None:
+                raise RemoraError(f"{name} may only be specified once")
+            if index + 1 >= len(args) or args[index + 1].startswith("-"):
+                raise RemoraError(f"{name} requires a value")
+            value = args[index + 1]
+            index += 2
+            continue
+        if arg.startswith(f"{name}="):
+            if value is not None:
+                raise RemoraError(f"{name} may only be specified once")
+            value = arg.partition("=")[2]
+            if not value:
+                raise RemoraError(f"{name} requires a value")
+            index += 1
+            continue
+        remaining.append(arg)
+        index += 1
+    return value, remaining
+
+
+def load_settings(value: str) -> dict[str, Any]:
+    path = Path(value).expanduser()
+    try:
+        raw = path.read_text(encoding="utf-8") if path.is_file() else value
+    except (OSError, ValueError) as exc:
+        raise RemoraError(f"cannot read --settings file {path}: {exc}") from exc
+    try:
+        parsed = json.loads(
+            raw,
+            parse_constant=reject_non_finite_json_constant,
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RemoraError(
+            "--settings must reference a readable JSON file or contain a valid JSON object"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise RemoraError("--settings must contain a JSON object")
+    return parsed
+
+
+def merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        current = merged.get(key)
+        merged[key] = (
+            merge_settings(current, value)
+            if isinstance(current, dict) and isinstance(value, dict)
+            else value
+        )
+    return merged
+
+
+def load_prompt_file(value: str) -> str:
+    path = Path(value).expanduser()
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        raise RemoraError(f"cannot read --append-system-prompt-file {path}: {exc}") from exc
+
+
 def split_fast_flag(args: list[str]) -> tuple[bool, list[str]]:
     """Consume the wrapper-only Fast flag when it is in the leading position."""
     remaining = list(args)
@@ -731,30 +804,56 @@ def build_launch(
     models = config["models"]
     proxy = config["proxy"]
     claude_bin = str(runtime.get("claude_binary", "claude")).strip() or "claude"
-    args = list(claude_args)
-
-    if has_option(args, "--settings"):
-        raise RemoraError(
-            "--settings cannot be combined with remora routing because Claude Code "
-            "accepts a single additional-settings source; put persistent settings in "
-            "Claude's normal settings files instead"
+    settings_value, args = extract_option(claude_args, "--settings")
+    settings = load_settings(settings_value) if settings_value is not None else {}
+    settings = merge_settings(settings, routing_settings(config))
+    try:
+        serialized_settings = json.dumps(
+            settings, ensure_ascii=True, separators=(",", ":"), allow_nan=False
         )
+    except (TypeError, ValueError) as exc:
+        raise RemoraError("--settings must contain valid finite JSON values") from exc
 
-    prefix: list[str] = [
-        "--settings",
-        json.dumps(routing_settings(config), ensure_ascii=True, separators=(",", ":")),
-    ]
+    prefix: list[str] = ["--settings", serialized_settings]
     if not has_option(args, "--model", "-m"):
         prefix.extend(["--model", str(models["main"])])
     if not has_option(args, "--agents"):
         compact = json.dumps(render_agents(config), ensure_ascii=False, separators=(",", ":"))
         prefix.extend(["--agents", compact])
-    if not has_option(args, "--append-system-prompt") and not has_option(
+
+    if os.environ.get(COMPOSE_SYSTEM_PROMPT_ENV, "").strip() == "1":
+        inline_prompt, args = extract_option(args, "--append-system-prompt")
+        prompt_file, args = extract_option(args, "--append-system-prompt-file")
+        bridged_prompt = os.environ.get(CALLER_SYSTEM_PROMPT_ENV)
+        caller_sources = sum(
+            source is not None for source in (inline_prompt, prompt_file, bridged_prompt)
+        )
+        if caller_sources > 1:
+            raise RemoraError(
+                "caller system prompt sources cannot be combined when "
+                f"{COMPOSE_SYSTEM_PROMPT_ENV}=1"
+            )
+        caller_prompt = (
+            load_prompt_file(prompt_file)
+            if prompt_file is not None
+            else inline_prompt
+            if inline_prompt is not None
+            else bridged_prompt or ""
+        )
+        policy = load_orchestration_policy()
+        prefix.extend(
+            [
+                "--append-system-prompt",
+                f"{caller_prompt}\n\n{policy}" if caller_prompt else policy,
+            ]
+        )
+    elif not has_option(args, "--append-system-prompt") and not has_option(
         args, "--append-system-prompt-file"
     ):
         prefix.extend(["--append-system-prompt", load_orchestration_policy()])
 
     env = os.environ.copy()
+    env.pop(CALLER_SYSTEM_PROMPT_ENV, None)
     if fast:
         apply_fast_mode(env)
     source_config = coralline_source_config(env)

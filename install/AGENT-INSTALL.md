@@ -78,7 +78,7 @@ remora doctor
 remora doctor --online
 ```
 
-Confirm that `remora doctor` prints every configured GPT model under `PASS routing allowlist`, and that `remora dry-run` contains the reviewed `--append-system-prompt` policy without exposing the gateway token. remora owns the child-only `--settings` argument used for this allowlist; do not add another `--settings` flag to the launch command.
+Confirm that `remora doctor` prints every configured GPT model under `PASS routing allowlist`, and that `remora dry-run` contains the reviewed `--append-system-prompt` policy without exposing the gateway token. A caller may pass one `--settings` JSON file or inline object; remora merges it with the routing allowlist into the single child-only settings document accepted by Claude Code. For wrappers that always append their own prompt, set `REMORA_COMPOSE_SYSTEM_PROMPT=1`; dry-run must then show one inline prompt with caller content first and remora policy second. Agent SDK wrappers must bridge their initialize-protocol append prompt through child-only `REMORA_CALLER_SYSTEM_PROMPT`; remora consumes and removes it before runtime launch. Without the opt-in, explicit prompt arguments continue to replace the default.
 
 Compare the post-install `~/.claude` path manifest with the preflight manifest. A difference is a failed isolation check: stop, show the changed paths, and do not claim success. Finish with the installed version, verification method, created and preserved paths, gateway reachability, and uninstall command.
 

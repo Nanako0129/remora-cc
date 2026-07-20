@@ -2,6 +2,12 @@
 
 All notable changes to remora are documented here.
 
+## Unreleased
+
+Allow callers such as Happy to pass one `--settings` JSON file or inline object. remora now consumes that argument, recursively merges it with the session routing allowlist, and forwards one inline settings document to Claude Code so caller hooks and gateway subagent model validation remain active together. Malformed, non-object, missing, duplicate, and non-finite settings inputs fail before launch.
+
+Add opt-in system-prompt composition for wrappers that supply their own prompt. With `REMORA_COMPOSE_SYSTEM_PROMPT=1`, remora consumes one inline, file, or child-only Agent SDK bridge prompt, places caller content before its orchestration policy, and forwards one inline append prompt. Happy omits the SDK initialize append field when using this bridge, and remora removes the bridge variable before runtime launch. Missing, duplicate, conflicting, and unreadable prompt inputs fail before launch. Without the opt-in, the existing explicit-prompt override contract is unchanged.
+
 ## 0.1.11 - 2026-07-16
 
 Add an explicit, session-only Fast mode for GPT-5.6 gateway sessions. `remora --fast ...` and `remora dry-run --fast ...` consume the leading wrapper flag instead of forwarding it to Claude Code, then add `service_tier=priority` through the child-only `CLAUDE_CODE_EXTRA_BODY` environment variable. Default launches remain unchanged, the parent environment is never mutated, and the setting disappears when the remora child exits.

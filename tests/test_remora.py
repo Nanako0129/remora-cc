@@ -346,7 +346,11 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("only duplicate startup and synthesis", policy)
         self.assertIn("stable multi-file repetition", policy)
 
-    @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=False)
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "0"},
+        clear=False,
+    )
     def test_explicit_claude_flags_win(self) -> None:
         custom = '{"mine":{"description":"x","prompt":"y"}}'
         command, _ = remora.build_launch(
@@ -367,7 +371,11 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(command.count("--append-system-prompt"), 1)
         self.assertIn("custom policy", command)
 
-    @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=False)
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "0"},
+        clear=False,
+    )
     def test_explicit_append_system_prompt_file_wins(self) -> None:
         command, _ = remora.build_launch(
             self.config, ["--append-system-prompt-file", "policy.md"]
@@ -375,10 +383,236 @@ class RemoraTests(unittest.TestCase):
         self.assertNotIn("--append-system-prompt", command)
         self.assertEqual(command.count("--append-system-prompt-file"), 1)
 
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "0"},
+        clear=True,
+    )
+    def test_disabled_prompt_composition_preserves_raw_args(self) -> None:
+        cases = [
+            ["--append-system-prompt", "one", "--append-system-prompt", "two"],
+            ["--append-system-prompt-file", "one", "--append-system-prompt-file", "two"],
+            ["--append-system-prompt"],
+            ["--append-system-prompt="],
+            ["--append-system-prompt-file"],
+            ["--append-system-prompt-file="],
+            [
+                "--append-system-prompt",
+                "inline",
+                "--append-system-prompt-file",
+                "policy.md",
+            ],
+        ]
+        for args in cases:
+            with self.subTest(args=args):
+                command, _ = remora.build_launch(self.config, args)
+                self.assertEqual(command[-len(args) :], args)
+
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"},
+        clear=True,
+    )
+    def test_option_extraction_stops_at_double_dash(self) -> None:
+        args = ["--", "--settings", "{}", "--append-system-prompt", "literal"]
+        command, _ = remora.build_launch(self.config, args)
+        self.assertEqual(command[-len(args) :], args)
+        self.assertEqual(command.count("--settings"), 2)
+        self.assertEqual(command.count("--append-system-prompt"), 2)
+        self.assertEqual(
+            command[command.index("--append-system-prompt") + 1],
+            remora.load_orchestration_policy(),
+        )
+
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"},
+        clear=True,
+    )
+    def test_prompt_composition_merges_inline_and_policy(self) -> None:
+        policy = remora.load_orchestration_policy()
+        for args, caller in (
+            (["--append-system-prompt", "happy policy"], "happy policy"),
+            (["--append-system-prompt=happy equals"], "happy equals"),
+        ):
+            with self.subTest(args=args):
+                command, _ = remora.build_launch(self.config, args)
+                self.assertEqual(command.count("--append-system-prompt"), 1)
+                self.assertEqual(
+                    command[command.index("--append-system-prompt") + 1],
+                    f"{caller}\n\n{policy}",
+                )
+                self.assertFalse(any(arg.startswith("--append-system-prompt=") for arg in command))
+
+    @mock.patch.dict(
+        os.environ,
+        {
+            "REMORA_AUTH_TOKEN": "test-secret",
+            remora.COMPOSE_SYSTEM_PROMPT_ENV: "1",
+            remora.CALLER_SYSTEM_PROMPT_ENV: "happy sdk policy",
+        },
+        clear=True,
+    )
+    def test_prompt_composition_reads_sdk_bridge_and_strips_child_env(self) -> None:
+        policy = remora.load_orchestration_policy()
+        command, env = remora.build_launch(self.config, [])
+        self.assertEqual(
+            command[command.index("--append-system-prompt") + 1],
+            f"happy sdk policy\n\n{policy}",
+        )
+        self.assertNotIn(remora.CALLER_SYSTEM_PROMPT_ENV, env)
+
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"},
+        clear=True,
+    )
+    def test_prompt_composition_reads_file_and_treats_empty_as_no_caller(self) -> None:
+        policy = remora.load_orchestration_policy()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "happy-prompt.md"
+            path.write_text("happy file policy", encoding="utf-8")
+            command, _ = remora.build_launch(
+                self.config, ["--append-system-prompt-file", str(path)]
+            )
+            path.write_text("", encoding="utf-8")
+            empty_command, _ = remora.build_launch(
+                self.config, ["--append-system-prompt-file", str(path)]
+            )
+
+        self.assertNotIn("--append-system-prompt-file", command)
+        self.assertEqual(
+            command[command.index("--append-system-prompt") + 1],
+            f"happy file policy\n\n{policy}",
+        )
+        self.assertEqual(
+            empty_command[empty_command.index("--append-system-prompt") + 1], policy
+        )
+
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"},
+        clear=True,
+    )
+    def test_prompt_composition_rejects_invalid_inputs(self) -> None:
+        cases = [
+            (
+                [
+                    "--append-system-prompt",
+                    "inline",
+                    "--append-system-prompt-file",
+                    "policy.md",
+                ],
+                "cannot be combined",
+            ),
+            (
+                ["--append-system-prompt", "one", "--append-system-prompt", "two"],
+                "only be specified once",
+            ),
+            (
+                [
+                    "--append-system-prompt-file",
+                    "one",
+                    "--append-system-prompt-file",
+                    "two",
+                ],
+                "only be specified once",
+            ),
+            (["--append-system-prompt"], "requires a value"),
+            (["--append-system-prompt", "--continue"], "requires a value"),
+            (["--append-system-prompt", "-c"], "requires a value"),
+            (["--append-system-prompt="], "requires a value"),
+            (["--append-system-prompt-file"], "requires a value"),
+            (["--append-system-prompt-file", "--continue"], "requires a value"),
+            (["--append-system-prompt-file", "-c"], "requires a value"),
+            (["--append-system-prompt-file="], "requires a value"),
+            (
+                ["--append-system-prompt-file", "/missing/remora-happy-policy.md"],
+                "cannot read",
+            ),
+            (["--append-system-prompt-file", "\x00"], "cannot read"),
+        ]
+        for args, message in cases:
+            with self.subTest(args=args):
+                with self.assertRaisesRegex(remora.RemoraError, message):
+                    remora.build_launch(self.config, args)
+
+        with mock.patch.dict(
+            os.environ,
+            {remora.CALLER_SYSTEM_PROMPT_ENV: "happy sdk policy"},
+            clear=False,
+        ):
+            for args in (
+                ["--append-system-prompt", "inline"],
+                ["--append-system-prompt-file", "/missing/policy.md"],
+            ):
+                with self.subTest(args=args):
+                    with self.assertRaisesRegex(remora.RemoraError, "cannot be combined"):
+                        remora.build_launch(self.config, args)
+
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
-    def test_explicit_settings_fail_closed_instead_of_disabling_routing(self) -> None:
-        with self.assertRaisesRegex(remora.RemoraError, "cannot be combined"):
-            remora.build_launch(self.config, ["--settings", "custom.json"])
+    def test_settings_file_merges_with_routing_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "happy-hooks.json"
+            path.write_text(
+                json.dumps({"hooks": {"SessionStart": [{"command": "happy hook"}]}}),
+                encoding="utf-8",
+            )
+            command, _ = remora.build_launch(
+                self.config, ["--continue", "--settings", str(path)]
+            )
+
+        self.assertEqual(command.count("--settings"), 1)
+        settings = json.loads(command[command.index("--settings") + 1])
+        self.assertEqual(settings["hooks"]["SessionStart"][0]["command"], "happy hook")
+        self.assertEqual(
+            settings["availableModels"],
+            ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
+        )
+        self.assertNotIn(str(path), command)
+
+    @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
+    def test_inline_settings_equals_form_is_merged(self) -> None:
+        command, _ = remora.build_launch(
+            self.config, ['--settings={"permissions":{"allow":["Read"]}}']
+        )
+        settings = json.loads(command[command.index("--settings") + 1])
+        self.assertEqual(settings["permissions"], {"allow": ["Read"]})
+        self.assertIn("gpt-5.6-luna", settings["availableModels"])
+
+    def test_settings_merge_is_recursive(self) -> None:
+        self.assertEqual(
+            remora.merge_settings(
+                {"hooks": {"SessionStart": ["caller"], "shared": {"caller": True}}},
+                {"hooks": {"shared": {"remora": True}}},
+            ),
+            {
+                "hooks": {
+                    "SessionStart": ["caller"],
+                    "shared": {"caller": True, "remora": True},
+                }
+            },
+        )
+
+    def test_settings_requires_one_json_object(self) -> None:
+        for args in (["--settings"], ["--settings", "--continue"], ["--settings", "-c"]):
+            with self.subTest(args=args):
+                with self.assertRaisesRegex(remora.RemoraError, "requires a value"):
+                    remora.build_launch(self.config, args, require_token=False)
+        with self.assertRaisesRegex(remora.RemoraError, "JSON object"):
+            remora.build_launch(self.config, ["--settings", "[]"], require_token=False)
+        with self.assertRaisesRegex(remora.RemoraError, "valid JSON object"):
+            remora.build_launch(self.config, ["--settings", "\x00"], require_token=False)
+        with self.assertRaisesRegex(remora.RemoraError, "finite JSON"):
+            remora.build_launch(
+                self.config, ["--settings", '{"number":1e9999}'], require_token=False
+            )
+        with self.assertRaisesRegex(remora.RemoraError, "only be specified once"):
+            remora.build_launch(
+                self.config,
+                ["--settings", "{}", "--settings={}"],
+                require_token=False,
+            )
 
     def test_routing_settings_allow_every_configured_model(self) -> None:
         self.assertEqual(

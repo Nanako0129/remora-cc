@@ -2,7 +2,7 @@
 
 All notable changes to remora are documented here.
 
-## Unreleased
+## 0.1.12 - 2026-07-21
 
 Align the session-only orchestration addendum with pilotfish v1.3.0 without carrying over provider-specific numeric thresholds. Recurring work is batchable only when the remaining items are independent, the same shape, and fully described by one stable brief with ownership and per-item acceptance. A diagnosed review finding with a known remedy is Execution work, but delegation remains conditional and the main session retains diagnosis, exceptions, integration, and acceptance.
 

@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 import unittest
-from contextlib import chdir, redirect_stdout
+from contextlib import chdir, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -75,6 +75,7 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-sol")
         self.assertTrue(command[command.index("--settings") + 1].startswith("{"))
         settings = launch_settings(command)
+        self.assertEqual(settings["fallbackModel"], [])
         self.assertEqual(
             settings["availableModels"],
             ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
@@ -624,8 +625,9 @@ class RemoraTests(unittest.TestCase):
                         remora.build_launch(self.config, args)
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
-    def test_caller_settings_use_guarded_file_and_hide_payload_from_argv(self) -> None:
+    def test_caller_settings_use_guarded_file_and_replace_fallback(self) -> None:
         secret = "happy-settings-secret"
+        fallback_secret = "caller-fallback-secret"
         created_paths: list[str] = []
         watcher_started_before_write: list[bool] = []
         real_mkstemp = tempfile.mkstemp
@@ -653,6 +655,7 @@ class RemoraTests(unittest.TestCase):
                     {
                         "hooks": {"SessionStart": [{"command": "happy hook"}]},
                         "env": {"HAPPY_UNOWNED": secret},
+                        "fallbackModel": [fallback_secret, "gpt-5.6-terra"],
                     }
                 ),
                 encoding="utf-8",
@@ -682,10 +685,13 @@ class RemoraTests(unittest.TestCase):
             self.assertEqual(created_paths, [settings_arg])
             self.assertEqual(watcher_started_before_write, [True])
             self.assertNotIn(secret, "\n".join(command))
+            self.assertNotIn(fallback_secret, "\n".join(command))
             self.assertNotIn('"hooks"', settings_arg)
             self.assertNotIn(str(path), command)
 
             settings = launch_settings(command)
+            self.assertEqual(settings["fallbackModel"], [])
+            self.assertNotIn(fallback_secret, json.dumps(settings))
             self.assertEqual(
                 settings["hooks"]["SessionStart"][0]["command"], "happy hook"
             )
@@ -740,13 +746,18 @@ class RemoraTests(unittest.TestCase):
         self.assertFalse(Path(created_paths[0]).exists())
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
-    def test_inline_settings_equals_form_is_merged(self) -> None:
+    def test_inline_settings_equals_form_replaces_caller_fallback(self) -> None:
         command, env = remora.build_launch(
-            self.config, ['--settings={"permissions":{"allow":["Read"]}}']
+            self.config,
+            [
+                '--settings={"permissions":{"allow":["Read"]},'
+                '"fallbackModel":[]}'
+            ],
         )
         try:
             settings = launch_settings(command)
             self.assertEqual(settings["permissions"], {"allow": ["Read"]})
+            self.assertEqual(settings["fallbackModel"], [])
             self.assertIn("gpt-5.6-luna", settings["availableModels"])
         finally:
             remora.close_launch_resources(env)
@@ -797,8 +808,9 @@ class RemoraTests(unittest.TestCase):
                     )
 
     @mock.patch.dict(os.environ, {}, clear=True)
-    def test_dry_run_hides_caller_settings_and_cleans_file(self) -> None:
+    def test_dry_run_hides_caller_settings_and_fallback_then_cleans_file(self) -> None:
         secret = "dry-run-settings-secret"
+        fallback_secret = "dry-run-fallback-secret"
         resources: list[tuple[str, int]] = []
         real_temporary_settings_file = remora.temporary_settings_file
 
@@ -816,7 +828,15 @@ class RemoraTests(unittest.TestCase):
         ):
             remora.dry_run(
                 self.config,
-                ["--settings", json.dumps({"env": {"HAPPY_UNOWNED": secret}})],
+                [
+                    "--settings",
+                    json.dumps(
+                        {
+                            "env": {"HAPPY_UNOWNED": secret},
+                            "fallbackModel": [fallback_secret],
+                        }
+                    ),
+                ],
             )
 
         shown = output.getvalue()
@@ -824,6 +844,7 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(len(resources), 1)
         path, guard_fd = resources[0]
         self.assertNotIn(secret, shown)
+        self.assertNotIn(fallback_secret, shown)
         self.assertEqual(
             payload["command"][payload["command"].index("--settings") + 1], path
         )
@@ -935,7 +956,166 @@ class RemoraTests(unittest.TestCase):
                 require_token=False,
             )
 
-    def test_routing_settings_allow_every_configured_model(self) -> None:
+    def test_caller_settings_reject_invalid_fallback_values_without_echo(self) -> None:
+        secret = "invalid-fallback-secret"
+        cases = {
+            "null": None,
+            "scalar-string": secret,
+            "object": {"model": secret},
+            "numeric": 1,
+            "boolean": True,
+            "mixed": ["gpt-5.6-terra", 1],
+            "empty-string": [""],
+            "whitespace-only": [" \t\n"],
+        }
+        with (
+            mock.patch.object(remora, "resolve_auth_token") as resolve_auth_token,
+            mock.patch.object(remora, "resolve_context_policy") as resolve_context_policy,
+            mock.patch.object(remora, "temporary_settings_file") as create_settings,
+        ):
+            for name, value in cases.items():
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(
+                        remora.RemoraError, "fallbackModel.*non-empty strings"
+                    ) as raised:
+                        remora.build_launch(
+                            self.config,
+                            ["--settings", json.dumps({"fallbackModel": value})],
+                        )
+                    self.assertNotIn(secret, str(raised.exception))
+
+        resolve_auth_token.assert_not_called()
+        resolve_context_policy.assert_not_called()
+        create_settings.assert_not_called()
+
+    def test_cli_fallback_flag_rejects_all_forms_without_echo(self) -> None:
+        secrets = ("separated-secret", "equals-secret", "duplicate-secret")
+        cases = (
+            (["--fallback-model", secrets[0]], "not supported"),
+            ([f"--fallback-model={secrets[1]}"], "not supported"),
+            (
+                [
+                    "--fallback-model",
+                    secrets[0],
+                    f"--fallback-model={secrets[2]}",
+                ],
+                "only be specified once",
+            ),
+            (["--fallback-model"], "requires a value"),
+            (["--fallback-model="], "requires a value"),
+            (["--fallback-model", "--continue"], "requires a value"),
+        )
+        for args, message in cases:
+            with self.subTest(args=args):
+                with self.assertRaisesRegex(remora.RemoraError, message) as raised:
+                    remora.build_launch(self.config, args, require_token=False)
+                for secret in secrets:
+                    self.assertNotIn(secret, str(raised.exception))
+
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"},
+        clear=True,
+    )
+    def test_cli_fallback_scan_skips_prompt_values(self) -> None:
+        policy = remora.load_orchestration_policy()
+        inline_command, _ = remora.build_launch(
+            self.config,
+            ["--append-system-prompt", "--fallback-model"],
+        )
+        self.assertEqual(
+            inline_command[inline_command.index("--append-system-prompt") + 1],
+            f"--fallback-model\n\n{policy}",
+        )
+
+        with mock.patch.object(
+            remora, "load_prompt_file", return_value="file policy"
+        ) as load_prompt_file:
+            file_command, _ = remora.build_launch(
+                self.config,
+                ["--append-system-prompt-file", "--fallback-model=prompt.md"],
+            )
+
+        load_prompt_file.assert_called_once_with("--fallback-model=prompt.md")
+        self.assertEqual(
+            file_command[file_command.index("--append-system-prompt") + 1],
+            f"file policy\n\n{policy}",
+        )
+
+        with self.assertRaisesRegex(remora.RemoraError, "not supported"):
+            remora.build_launch(
+                self.config,
+                [
+                    "--append-system-prompt",
+                    "--fallback-model",
+                    "--fallback-model",
+                    "actual-fallback",
+                ],
+            )
+
+    def test_cli_fallback_rejection_precedes_launch_side_effects(self) -> None:
+        secret = "early-rejection-secret"
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(remora, "load_config", return_value=self.config),
+            mock.patch.object(remora, "load_settings") as load_settings,
+            mock.patch.object(remora, "resolve_auth_token") as resolve_auth_token,
+            mock.patch.object(remora, "resolve_context_policy") as resolve_context_policy,
+            mock.patch.object(remora, "temporary_settings_file") as create_settings,
+            mock.patch.object(remora, "prepare_coralline_config") as prepare_coralline,
+            mock.patch.object(remora, "exec_launch") as exec_launch,
+            redirect_stderr(stderr),
+        ):
+            result = remora.main(
+                ["--settings", '{"hooks":{}}', "--fallback-model", secret]
+            )
+
+        self.assertEqual(result, 2)
+        load_settings.assert_not_called()
+        resolve_auth_token.assert_not_called()
+        resolve_context_policy.assert_not_called()
+        create_settings.assert_not_called()
+        prepare_coralline.assert_not_called()
+        exec_launch.assert_not_called()
+        self.assertNotIn(secret, stderr.getvalue())
+
+    def test_double_dash_preserves_literal_fallback_arguments(self) -> None:
+        args = [
+            "--",
+            "--fallback-model",
+            "literal-after-delimiter",
+            "--fallback-model=also-literal",
+        ]
+        command, _ = remora.build_launch(self.config, args, require_token=False)
+        self.assertEqual(command[-len(args) :], args)
+        self.assertEqual(launch_settings(command)["fallbackModel"], [])
+
+    def test_fallback_policy_preserves_explicit_terra_model_forms(self) -> None:
+        cases = (
+            ["--model", "sonnet"],
+            ["-m", "sonnet"],
+            ["--model=sonnet"],
+            ["--model", "gpt-5.6-terra"],
+        )
+        for args in cases:
+            with self.subTest(args=args):
+                command, env = remora.build_launch(
+                    self.config, args, require_token=False
+                )
+                caller_start = len(command) - len(args)
+                self.assertEqual(command[caller_start:], args)
+                self.assertFalse(
+                    any(
+                        arg == "--model" or arg.startswith("--model=")
+                        for arg in command[:caller_start]
+                    )
+                )
+                self.assertEqual(
+                    env["ANTHROPIC_DEFAULT_SONNET_MODEL"], "gpt-5.6-terra"
+                )
+                self.assertEqual(launch_settings(command)["fallbackModel"], [])
+
+    def test_routing_settings_allow_models_and_disable_fallback(self) -> None:
         self.assertEqual(
             remora.routing_settings(self.config),
             {
@@ -943,7 +1123,8 @@ class RemoraTests(unittest.TestCase):
                     "gpt-5.6-luna",
                     "gpt-5.6-sol",
                     "gpt-5.6-terra",
-                ]
+                ],
+                "fallbackModel": [],
             },
         )
 

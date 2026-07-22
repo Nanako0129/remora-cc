@@ -38,7 +38,7 @@ A delegation planner such as [Baton](https://github.com/cablate/baton) can compo
 | Command | Unchanged | Separate executable |
 | Anthropic login | Unchanged | Replaced only in the child environment |
 | `~/.claude/settings.json` | Never written | Still readable by Claude Code |
-| Additional settings | None | Inline routing allowlist, or a merged caller document through a guarded `0600` temporary file |
+| Additional settings | None | Inline routing allowlist plus no-fallback policy, or a merged caller document through a guarded `0600` temporary file |
 | `~/.claude/agents/` | Never written | Session agents take precedence by name |
 | Project `.claude/` | Never written | Continues to load normally |
 | Shell aliases/functions | Never written | None required |
@@ -69,7 +69,11 @@ The defaults mirror the working GPT-5.6 split that motivated this repository. Ev
 
 Claude Code's built-in aliases remain useful escape hatches: Opus defaults to Sol, Sonnet to Terra, and Haiku to Luna.
 
-Claude Code validates subagent models against `availableModels`. If a user's normal settings list only Claude aliases, a raw gateway id such as `gpt-5.6-luna` is otherwise rejected and silently inherits the Sol main model. remora prevents that fallback by passing a child-only additional settings document that allowlists every configured gateway model. If a caller also supplies `--settings` as a JSON file or inline object, remora merges it instead of dropping either source, removes any caller `env` entries owned by remora's gateway/model/session contract, and preserves other caller settings. The merged caller document is written to a unique `0600` temporary file, while a detached pipe watcher removes it when the Claude process exits or is killed; its full JSON and secrets therefore do not appear in the child argv or dry-run output. Routing-only settings remain inline. Use a JSON file rather than inline JSON when caller settings contain secrets, because inline values are already visible in the original remora command line. remora does not write or replace the user's settings file, and managed organization policy still retains its normal higher precedence.
+Claude Code validates subagent models against `availableModels`. If a user's normal settings list only Claude aliases, a raw gateway id such as `gpt-5.6-luna` is otherwise rejected and silently inherits the Sol main model. remora prevents that path by passing child-only additional settings with every configured gateway model allowlisted and an exact `fallbackModel: []`, so the remora main session does not automatically fall through to an inherited user, project, or local fallback model. Behavioral compatibility testing covered Claude Code 2.1.216 and 2.1.217. Explicit selection still works: use `remora --model sonnet`, `remora -m sonnet`, or `remora --model=gpt-5.6-terra` to choose Terra.
+
+If a caller also supplies `--settings` as a JSON file or inline object, remora merges it instead of dropping either source, removes any caller `env` entries owned by remora's gateway/model/session contract, and preserves other caller settings. A present caller `fallbackModel` must be a JSON array of non-empty strings (an empty array is valid); remora validates it without echoing its values, removes it, and injects the authoritative empty array. The equivalent Claude CLI `--fallback-model` option is rejected before gateway authentication, context discovery, temporary-file creation, or child execution. The merged caller document is written to a unique `0600` temporary file, while a detached pipe watcher removes it when the Claude process exits or is killed; its full JSON and secrets therefore do not appear in the child argv or dry-run output. Routing-only settings remain inline. Use a JSON file rather than inline JSON when caller settings contain secrets, because inline values are already visible in the original remora command line.
+
+This policy affects only the remora child and does not write or replace the user's settings file. Managed organization policy retains higher precedence than remora's additional settings; if an organization enforces its own fallback, remora cannot override that control, so administrators must align the managed policy before relying on no-fallback behavior.
 
 Wrappers such as Happy also append their own system prompt. Set `REMORA_COMPOSE_SYSTEM_PROMPT=1` when launching such a wrapper to combine its inline or file prompt first and remora's orchestration policy second into one child-only `--append-system-prompt`. A separated prompt value or prompt-file path may begin with `-`; `--` still ends remora's option scan. Happy's Agent SDK adapter automatically bridges its remote append prompt to remora because the SDK otherwise sends that prompt through its initialize protocol and overrides executable CLI flags. Without this opt-in, explicit `--append-system-prompt*` arguments retain their existing behavior and replace remora's default policy.
 
@@ -163,7 +167,7 @@ Give Claude Code this prompt. The immutable tag is intentional:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.13/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.14/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -175,7 +179,7 @@ The runbook will not ask for a bearer token or OAuth file. It stops at an approv
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.13 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.14 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```
@@ -237,7 +241,7 @@ remora --continue
 remora -p 'summarize this repository'
 ```
 
-All unrecognized arguments pass through to `claude`. Explicit Claude flags win: supplying your own `--model` or `--agents` prevents remora from injecting that specific default.
+All unrecognized arguments pass through to `claude`. Explicit Claude flags win: supplying your own `--model` or `--agents` prevents remora from injecting that specific default. The deliberate exception is `--fallback-model`, which remora rejects before launch to keep automatic fallback disabled; text after the `--` delimiter remains untouched.
 
 ### Fast mode
 

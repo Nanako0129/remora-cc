@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.13"
+VERSION = "0.1.14"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
@@ -308,7 +308,10 @@ def configured_model_names(config: dict[str, Any]) -> set[str]:
 
 
 def routing_settings(config: dict[str, Any]) -> dict[str, Any]:
-    return {"availableModels": sorted(configured_model_names(config))}
+    return {
+        "availableModels": sorted(configured_model_names(config)),
+        "fallbackModel": [],
+    }
 
 
 def fetch_gateway_context_windows(config: dict[str, Any], token: str) -> dict[str, int]:
@@ -571,6 +574,27 @@ def has_option(args: list[str], long_name: str, short_name: str | None = None) -
     return False
 
 
+def omit_option_values(args: list[str], option_names: set[str]) -> list[str]:
+    """Return option-scan arguments without operands owned by known options."""
+    remaining: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            remaining.extend(args[index:])
+            break
+        remaining.append(arg)
+        if (
+            arg in option_names
+            and index + 1 < len(args)
+            and args[index + 1] != "--"
+        ):
+            index += 2
+            continue
+        index += 1
+    return remaining
+
+
 def extract_option(
     args: list[str], name: str, *, allow_leading_hyphen: bool = False
 ) -> tuple[str | None, list[str]]:
@@ -653,17 +677,29 @@ def merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, 
 
 
 def sanitize_caller_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    if "env" not in settings:
-        return settings
-    caller_env = settings["env"]
-    if not isinstance(caller_env, dict):
-        raise RemoraError("--settings env must contain a JSON object")
-    sanitized = dict(settings)
-    sanitized["env"] = {
-        key: value
-        for key, value in caller_env.items()
-        if key not in PROTECTED_SETTINGS_ENV
-    }
+    sanitized = settings
+    if "fallbackModel" in settings:
+        fallback_models = settings["fallbackModel"]
+        if type(fallback_models) is not list or any(
+            type(item) is not str or not item.strip() for item in fallback_models
+        ):
+            raise RemoraError(
+                "--settings fallbackModel must be a JSON array of non-empty strings"
+            )
+        sanitized = dict(settings)
+        sanitized.pop("fallbackModel")
+
+    if "env" in settings:
+        caller_env = settings["env"]
+        if not isinstance(caller_env, dict):
+            raise RemoraError("--settings env must contain a JSON object")
+        if sanitized is settings:
+            sanitized = dict(settings)
+        sanitized["env"] = {
+            key: value
+            for key, value in caller_env.items()
+            if key not in PROTECTED_SETTINGS_ENV
+        }
     return sanitized
 
 
@@ -951,6 +987,16 @@ def build_launch(
     require_token: bool = True,
     fast: bool = False,
 ) -> tuple[list[str], dict[str, str]]:
+    fallback_scan_args = omit_option_values(
+        claude_args,
+        {"--append-system-prompt", "--append-system-prompt-file"},
+    )
+    fallback_model, _ = extract_option(fallback_scan_args, "--fallback-model")
+    if fallback_model is not None:
+        raise RemoraError(
+            "--fallback-model is not supported because remora disables automatic fallback"
+        )
+
     runtime = config.get("runtime", {})
     models = config["models"]
     proxy = config["proxy"]

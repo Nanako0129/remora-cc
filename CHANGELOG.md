@@ -2,6 +2,14 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.14 - 2026-07-22
+
+Isolate remora child main sessions from inherited Claude fallback routing. The child-only additional settings now carry an exact `fallbackModel: []` alongside the sorted `availableModels` allowlist. Caller settings may include `fallbackModel` only as an array of non-empty strings (including the valid empty array); remora validates without echoing values, discards the caller key, and injects its authoritative empty array while preserving unrelated settings, hooks, permissions, environment, and guarded-file handling.
+
+Reject separated, equals-form, missing, and duplicate caller `--fallback-model` options before token resolution, context discovery, temporary settings creation, or child execution. Parsing still stops at `--`, and explicit `--model`, `-m`, and equals-form model selection—including Terra—remains unchanged. Regression coverage retains the guarded `0600` file, cleanup watcher, argv and dry-run secrecy, Happy prompt composition, and named-role model/effort contracts.
+
+Document the child-only policy and its compatibility testing with Claude Code 2.1.216 and 2.1.217. Managed organization policy still has higher precedence and can enforce fallback beyond remora's control. Existing installations must upgrade to v0.1.14 before this child-only policy takes effect.
+
 ## 0.1.13 - 2026-07-21
 
 Treat `ENAMETOOLONG` from a filesystem probe as evidence that a caller `--settings` value is inline JSON rather than an unreadable path. This preserves file-or-JSON behavior for large settings documents on Linux while keeping real file read errors actionable and invalid inline values subject to the existing strict JSON validation.

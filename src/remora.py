@@ -574,6 +574,27 @@ def has_option(args: list[str], long_name: str, short_name: str | None = None) -
     return False
 
 
+def omit_option_values(args: list[str], option_names: set[str]) -> list[str]:
+    """Return option-scan arguments without operands owned by known options."""
+    remaining: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            remaining.extend(args[index:])
+            break
+        remaining.append(arg)
+        if (
+            arg in option_names
+            and index + 1 < len(args)
+            and args[index + 1] != "--"
+        ):
+            index += 2
+            continue
+        index += 1
+    return remaining
+
+
 def extract_option(
     args: list[str], name: str, *, allow_leading_hyphen: bool = False
 ) -> tuple[str | None, list[str]]:
@@ -966,7 +987,11 @@ def build_launch(
     require_token: bool = True,
     fast: bool = False,
 ) -> tuple[list[str], dict[str, str]]:
-    fallback_model, _ = extract_option(claude_args, "--fallback-model")
+    fallback_scan_args = omit_option_values(
+        claude_args,
+        {"--append-system-prompt", "--append-system-prompt-file"},
+    )
+    fallback_model, _ = extract_option(fallback_scan_args, "--fallback-model")
     if fallback_model is not None:
         raise RemoraError(
             "--fallback-model is not supported because remora disables automatic fallback"

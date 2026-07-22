@@ -1012,6 +1012,47 @@ class RemoraTests(unittest.TestCase):
                 for secret in secrets:
                     self.assertNotIn(secret, str(raised.exception))
 
+    @mock.patch.dict(
+        os.environ,
+        {"REMORA_AUTH_TOKEN": "test-secret", remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"},
+        clear=True,
+    )
+    def test_cli_fallback_scan_skips_prompt_values(self) -> None:
+        policy = remora.load_orchestration_policy()
+        inline_command, _ = remora.build_launch(
+            self.config,
+            ["--append-system-prompt", "--fallback-model"],
+        )
+        self.assertEqual(
+            inline_command[inline_command.index("--append-system-prompt") + 1],
+            f"--fallback-model\n\n{policy}",
+        )
+
+        with mock.patch.object(
+            remora, "load_prompt_file", return_value="file policy"
+        ) as load_prompt_file:
+            file_command, _ = remora.build_launch(
+                self.config,
+                ["--append-system-prompt-file", "--fallback-model=prompt.md"],
+            )
+
+        load_prompt_file.assert_called_once_with("--fallback-model=prompt.md")
+        self.assertEqual(
+            file_command[file_command.index("--append-system-prompt") + 1],
+            f"file policy\n\n{policy}",
+        )
+
+        with self.assertRaisesRegex(remora.RemoraError, "not supported"):
+            remora.build_launch(
+                self.config,
+                [
+                    "--append-system-prompt",
+                    "--fallback-model",
+                    "--fallback-model",
+                    "actual-fallback",
+                ],
+            )
+
     def test_cli_fallback_rejection_precedes_launch_side_effects(self) -> None:
         secret = "early-rejection-secret"
         stderr = io.StringIO()

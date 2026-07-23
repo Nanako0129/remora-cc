@@ -30,7 +30,7 @@ Collect and report the following without changing anything:
 | Gateway | Ask only whether an Anthropic Messages-compatible gateway exists and what base URL should be configured; if absent, point to `docs/cliproxyapi.md` and keep OAuth as a human handoff |
 | Secret source | Ask whether the user will use an environment variable or an OS credential command; never ask for the secret value |
 | Context mode | Offer `stock` (official Claude binary, 200K, Claude-managed compact, recommended) and `calico` (separately installed patched binary, bounded by the smaller gateway/Codex runtime window). Never select or install Calico implicitly |
-| Runtime policy | Read `agents/agents.json` and `agents/orchestration.md` from the same immutable tag; report that the latter is appended only to the remora child session, controls foreground/background delegation, and leaves every named role's model to its agent definition |
+| Runtime policy | Read `agents/agents.json` and `agents/orchestration.md` from the same immutable tag; report that the latter is appended only to the remora child session, gates the stable-ID program envelope before independently gated slices, enforces exactly-one-unit bare `READY`/structured `REVISE` readiness with a two-verdict automatic brake per unit epoch, controls foreground/background delegation, and leaves every named role's model to its agent definition |
 
 If the executable path already exists and is not a symlink owned by remora, treat it as a conflict and stop. If a configuration exists, preserve it and report that installation will not edit it.
 

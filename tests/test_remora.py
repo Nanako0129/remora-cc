@@ -278,7 +278,9 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("final outcome and implementation Plan may still be unknown", policy)
         self.assertIn("| Plan |", policy)
         self.assertIn("main session synthesizes one Plan", policy)
-        self.assertIn("returning only `READY` or `REVISE`", policy)
+        self.assertIn("bounded readiness contract below", policy)
+        self.assertIn("exactly the bare word `READY`", policy)
+        self.assertIn("structured `REVISE` contract", policy)
         self.assertIn("tool-enforced read-only `plan-verifier`", policy)
         self.assertIn("| Approval |", policy)
         self.assertIn("wait for explicit user approval", policy)
@@ -287,19 +289,124 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("approved or otherwise authorized contract", policy)
         self.assertIn("| Verification |", policy)
         self.assertIn("returns only `CONFIRMED` or `REFUTED`", policy)
-        self.assertIn("request only `READY` or `REVISE`", policy)
+        self.assertIn("request the bare `READY` or structured `REVISE` contract", policy)
         self.assertIn("not Plan-readiness labels", policy)
 
     def test_plan_and_outcome_verifiers_have_separate_capabilities(self) -> None:
         plan_verifier = remora.load_agent_definitions()["plan-verifier"]
         verifier = remora.load_agent_definitions()["verifier"]
-        self.assertIn("READY", plan_verifier["prompt"])
-        self.assertIn("REVISE", plan_verifier["prompt"])
+        self.assertIn("exactly the bare word READY on its own", plan_verifier["prompt"])
+        self.assertIn("REVISE is never a bare verdict", plan_verifier["prompt"])
+        self.assertIn("first output bytes must be READY or REVISE", plan_verifier["prompt"])
+        self.assertIn("stable ID", plan_verifier["prompt"])
+        self.assertIn("either the program envelope or one execution slice", plan_verifier["prompt"])
+        self.assertIn("cosmetic fragmentation", plan_verifier["prompt"])
+        for field in ("Blocker:", "Evidence:", "Minimum revision:", "Acceptance check:"):
+            self.assertIn(field, plan_verifier["prompt"])
         self.assertEqual(plan_verifier["tools"], ["Read", "Glob", "Grep"])
         self.assertNotIn("Plan readiness", verifier["prompt"])
         self.assertIn("exactly CONFIRMED or REFUTED", verifier["prompt"])
+        self.assertIn("never return READY or REVISE", verifier["prompt"])
         self.assertIn("Write", verifier["disallowedTools"])
         self.assertIn("Agent", verifier["disallowedTools"])
+
+    def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("A passing verdict is exactly the bare word `READY` on its own", policy)
+        self.assertIn("A blocking verdict is never bare", policy)
+        self.assertIn("protocol failure, not a readiness verdict", policy)
+        self.assertIn("same unchanged readiness unit once per unit epoch", policy)
+        self.assertIn(
+            "separate from the two valid automatic `REVISE` rounds",
+            policy,
+        )
+        for field in ("Blocker:", "Evidence:", "Minimum revision:", "Acceptance check:"):
+            self.assertIn(field, policy)
+
+        self.assertIn("program envelope owning the outcome and non-goals", policy)
+        self.assertIn("cross-cutting architecture/security/privacy invariants", policy)
+        self.assertIn("dependency DAG", policy)
+        self.assertIn("integration and rollback strategy", policy)
+        self.assertIn("global budget and stop conditions", policy)
+        self.assertIn("unresolved cross-cutting blocker", policy)
+        self.assertIn("smallest genuinely independently approvable, executable, and verifiable slices", policy)
+        self.assertIn("stable slice ID", policy)
+        self.assertIn("exclusive ownership", policy)
+        self.assertIn("stable prerequisites", policy)
+        self.assertIn("an acceptance check", policy)
+        self.assertIn("a rollback path", policy)
+        self.assertIn("cosmetic fragmentation must not bypass a blocker", policy)
+        self.assertIn("tracked per stable readiness-unit ID, not across the whole program", policy)
+        self.assertIn("after each `REVISE`", policy)
+        self.assertIn("must use a fresh `plan-verifier`", policy)
+        self.assertIn("After two automatic `REVISE` verdicts in one readiness-unit epoch, automatic resubmission pauses only that unit", policy)
+        self.assertIn("two `REVISE` rounds per unit epoch", policy)
+        self.assertIn("surface that unit's blockers and options for explicit user direction", policy)
+        self.assertIn("the cap is not `READY`", policy)
+        self.assertIn("An explicit user-directed continuation is allowed after the brake", policy)
+        self.assertIn("fresh review rather than an automatic loop", policy)
+        self.assertIn("Only a material user change to that unit's outcome, scope, or architecture", policy)
+        self.assertIn("materially new envelope or slice Plan after intervention", policy)
+        self.assertIn("Superficial rewrites or cosmetic slice splits cannot reset the epoch", policy)
+        self.assertIn("A `READY` slice may be presented for explicit approval and executed while unrelated or later slices remain in planning", policy)
+        self.assertIn("review only the next executable slice by default", policy)
+        self.assertIn("stop readiness review and present the envelope plus that slice", policy)
+        self.assertIn("Keep downstream slices in Plan until their prerequisites make them next", policy)
+        self.assertIn("Fully specify only the next executable slice", policy)
+        self.assertIn("Missing future detail is not a blocker", policy)
+        self.assertIn("explicitly requests a batch", policy)
+        self.assertIn("unresolved prerequisite", policy)
+        self.assertIn("unrelated `READY` slices may proceed after their own explicit approval", policy)
+
+    def test_program_envelope_is_reviewed_before_any_child_slice(self) -> None:
+        policy = remora.load_orchestration_policy()
+        prompt = remora.load_agent_definitions()["plan-verifier"]["prompt"]
+
+        for phrase in (
+            "own stable readiness-unit ID",
+            "must receive `READY` before any child slice is reviewed",
+            "exactly one readiness unit",
+            "program envelope or one execution slice, never both",
+            "paused envelope keeps every dependent slice",
+            "envelope's own `READY` verdict must precede every child-slice review",
+        ):
+            self.assertIn(phrase, policy)
+        for phrase in (
+            "Review exactly one supplied readiness unit",
+            "either the program envelope or one execution slice",
+            "never both in one call",
+            "evidence that its envelope already received READY",
+            "reviewed before its envelope is READY",
+        ):
+            self.assertIn(phrase, prompt)
+
+    def test_security_evidence_precedes_first_plan_readiness_and_approval(self) -> None:
+        policy = remora.load_orchestration_policy()
+        prompt = remora.load_agent_definitions()["plan-verifier"]["prompt"]
+        security = policy.index("For any program envelope or slice involving authentication")
+        readiness = policy.index("`READY` means readiness only, never user approval")
+        approval = policy.index("wait for explicit user approval before sending an implementation brief or writing")
+        self.assertLess(security, readiness)
+        self.assertLess(readiness, approval)
+        self.assertIn("carry its findings and evidence gaps into the slice Plan, program envelope, and decision ledger", policy)
+        self.assertIn("before the first `plan-verifier` call for that unit", policy)
+        self.assertIn("Never launch those reviews concurrently", policy)
+        self.assertIn(
+            "require evidence that the read-only security-reviewer finished",
+            prompt,
+        )
+        self.assertIn(
+            "findings, evidence gaps, and dispositions are present in the Plan ledger",
+            prompt,
+        )
+        self.assertIn("Missing security-review evidence is a blocker", prompt)
+
+    def test_ready_never_bypasses_approval_or_outcome_verifier_vocabulary(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("`READY` means readiness only, never user approval", policy)
+        self.assertIn("wait for explicit user approval before sending an implementation brief or writing", policy)
+        self.assertIn("outcome `verifier` retains its separate vocabulary", policy)
+        self.assertIn("only `CONFIRMED` or `REFUTED`", policy)
 
     def test_security_review_and_execution_have_separate_capabilities(self) -> None:
         definitions = remora.load_agent_definitions()
@@ -365,13 +472,13 @@ class RemoraTests(unittest.TestCase):
 
     def test_policy_requires_plan_convergence_or_escalation(self) -> None:
         policy = remora.load_orchestration_policy()
-        self.assertIn("Do not resubmit a substantially unchanged Plan", policy)
+        self.assertIn("Do not resubmit a substantially unchanged slice Plan", policy)
         self.assertIn("material revision or new evidence", policy)
-        self.assertIn("simplify it", policy)
-        self.assertIn("surface the blocker to the user", policy)
-        self.assertIn("defer the blocked scope", policy)
+        self.assertIn("simplify the slice", policy)
+        self.assertIn("surface that unit's blockers and options for explicit user direction", policy)
+        self.assertIn("defer that blocked scope", policy)
         self.assertIn("Never silently overrule", policy)
-        self.assertNotIn("two `REVISE` rounds per Plan", policy)
+        self.assertIn("two `REVISE` rounds per unit epoch", policy)
 
     def test_completed_recon_output_is_collected_without_rerunning(self) -> None:
         policy = remora.load_orchestration_policy()

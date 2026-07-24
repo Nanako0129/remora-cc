@@ -24,6 +24,13 @@ test "$BEFORE" = "$AFTER"
 test "$BEFORE_CONTENT" = "$(cksum "$TMP/.claude/settings.json")"
 test -L "$TMP/.local/bin/remora"
 test -f "$TMP/.config/remora-cc/config.toml"
+test -f "$TMP/.local/share/remora-cc/agents/orchestration.md"
+grep -Fq '## Bounded slice Plan-readiness contract' \
+  "$TMP/.local/share/remora-cc/agents/orchestration.md"
+grep -Fq 'automatic resubmission pauses only that unit' \
+  "$TMP/.local/share/remora-cc/agents/orchestration.md"
+grep -Fq 'stable readiness-unit ID' \
+  "$TMP/.local/share/remora-cc/agents/orchestration.md"
 
 printf '#!/bin/sh\n' > "$TMP/unrelated-remora"
 chmod +x "$TMP/unrelated-remora"

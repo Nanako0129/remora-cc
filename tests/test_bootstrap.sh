@@ -14,6 +14,10 @@ ln -s "$(command -v python3)" "$TMP/bin/python3"
 REMORA_DIST_DIR="$TMP/release" "$ROOT/scripts/package-release.sh" >/dev/null
 tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
   | grep -qx "remora-cc-$VERSION/benchmarks/baton-compatibility/results.json"
+tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
+  | grep -qx "remora-cc-$VERSION/agents/orchestration.md"
+tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
+  | grep -qx "remora-cc-$VERSION/agents/agents.json"
 
 PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
 HOME="$TMP/home" \
@@ -28,6 +32,9 @@ REMORA_ALLOW_CHECKSUM_ONLY=1 \
 test -L "$TMP/home/.local/bin/remora"
 test -f "$TMP/home/.config/remora-cc/config.toml"
 test "$(HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config" "$TMP/home/.local/bin/remora" version)" = "remora $VERSION"
+grep -Fq 'Blocker:' "$TMP/home/.local/share/remora-cc/agents/agents.json"
+grep -Fq 'automatic resubmission pauses only that unit' \
+  "$TMP/home/.local/share/remora-cc/agents/orchestration.md"
 test "$(find "$TMP/home/.claude" -type f -print | sort)" = "$TMP/home/.claude/settings.json"
 
 cp "$TMP/release/checksums.txt" "$TMP/release/checksums.good"

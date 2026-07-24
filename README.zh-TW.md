@@ -110,7 +110,7 @@ Runtime 行為與參考文件：
 
 ```text
 請閱讀並遵循這份安裝 runbook：
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.14/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.15/install/AGENT-INSTALL.md
 
 先只執行唯讀 preflight。列出所有預計的檔案變更、trust boundary、
 下載來源與驗證步驟。在我明確批准以前，不要寫入任何內容。
@@ -123,7 +123,7 @@ token 或 OAuth 檔案。
 ### 手動 source install
 
 ```bash
-git clone --branch v0.1.14 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.15 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

@@ -20,6 +20,7 @@ interactive option. Exiting the child session removes every override.
 - [Isolation and security](#isolation-and-security)
 - [Troubleshooting](#troubleshooting)
 - [Uninstall](#uninstall)
+- [Support remora](#support-remora)
 - [Further reading](#further-reading)
 
 ## What remora changes
@@ -262,6 +263,22 @@ Claude Code. For file-level evidence, compare a SHA-256 manifest of
 
 The default keeps `config.toml`; `--purge` removes it. Neither command touches
 `~/.claude`.
+
+## Support remora
+
+remora is a small, free launcher, but verifying its isolation and routing
+promises crosses Claude Code, an Anthropic-compatible gateway, GPT-5.6 model
+routes, OAuth and subscription quota behavior, changing context metadata, and
+optional priority-tier requests.
+
+The public
+[Baton compatibility Gate](./benchmarks/baton-compatibility/README.md#final-gate-result)
+alone used 45 model turns and reported $2.15 in client-reported cost; a
+rejected candidate consumed more before it was discarded. Sponsorship helps
+fund the live model credits and repeated multi-agent and independent-verifier
+runs needed to keep these guarantees evidence-based instead of assumed.
+
+[![Support remora on Ko-fi](https://img.shields.io/badge/Support_on_Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nanako0129)
 
 ## Further reading
 

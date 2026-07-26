@@ -278,7 +278,7 @@ rejected candidate consumed more before it was discarded. Sponsorship helps
 fund the live model credits and repeated multi-agent and independent-verifier
 runs needed to keep these guarantees evidence-based instead of assumed.
 
-[![Support remora on Ko-fi](https://img.shields.io/badge/Support_on_Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nanako0129)
+[![Support remora on Patreon](https://img.shields.io/badge/Support_on_Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/cw/Nanako0129/membership)
 
 ## Further reading
 

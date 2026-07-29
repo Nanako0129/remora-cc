@@ -46,6 +46,10 @@ approval before downstream slices. Security-sensitive units require read-only
 security evidence before the first Plan review for that unit. The complete contract belongs in
 [the architecture document](./docs/architecture.md#role-policy).
 
+Outcome verification is claim-scoped and returns `CONFIRMED`, `REFUTED`, or
+`INCONCLUSIVE`. Long autonomous work declares `AUTO` or `ASK` and never expands
+the user's authority.
+
 ## Architecture and model map
 
 ```mermaid

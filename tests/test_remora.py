@@ -288,7 +288,7 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("| Execution |", policy)
         self.assertIn("approved or otherwise authorized contract", policy)
         self.assertIn("| Verification |", policy)
-        self.assertIn("returns only `CONFIRMED` or `REFUTED`", policy)
+        self.assertIn("returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`", policy)
         self.assertIn("request the bare `READY` or structured `REVISE` contract", policy)
         self.assertIn("not Plan-readiness labels", policy)
 
@@ -305,10 +305,63 @@ class RemoraTests(unittest.TestCase):
             self.assertIn(field, plan_verifier["prompt"])
         self.assertEqual(plan_verifier["tools"], ["Read", "Glob", "Grep"])
         self.assertNotIn("Plan readiness", verifier["prompt"])
-        self.assertIn("exactly CONFIRMED or REFUTED", verifier["prompt"])
-        self.assertIn("never return READY or REVISE", verifier["prompt"])
+        self.assertIn("CONFIRMED when", verifier["prompt"])
+        self.assertIn("REFUTED only when", verifier["prompt"])
+        self.assertIn("or INCONCLUSIVE when", verifier["prompt"])
+        self.assertIn("never return ready or revise", verifier["prompt"].lower())
         self.assertIn("Write", verifier["disallowedTools"])
         self.assertIn("Agent", verifier["disallowedTools"])
+
+    def test_outcome_verifier_and_recovery_contract(self) -> None:
+        prompt = remora.load_agent_definitions()["verifier"]["prompt"]
+        policy = remora.load_orchestration_policy()
+
+        self.assertIn("reproducible P0-P2 finding blocks the exact claim", prompt)
+        self.assertIn("P3/P4 items are non-blocking advisories", prompt)
+        self.assertTrue(all(
+            rule in prompt and rule in policy
+            for rule in (
+                "Priority measures real user or system impact, not whether a finding is central",
+                "reproducible high-impact security or correctness failure",
+                "bounded and recoverable is P2 unless it independently meets P0 or high-impact P1",
+            )
+        ))
+        self.assertTrue(
+            all(field in prompt for field in (
+                "Priority P0-P4", "Confidence high/medium/low",
+                "Evidence", "Expected", "Actual", "Recheck",
+            ))
+        )
+        self.assertTrue(all(
+            field in prompt
+            for field in ("Reason", "Missing evidence", "Retry condition")
+        ))
+        self.assertIn(
+            "without assuming the work is broken, distrusting evidence by default, "
+            "or maximizing finding volume",
+            prompt,
+        )
+        self.assertIn("Final disposition stays with the main session", policy)
+        self.assertIn("Fix P0/P1 within approved scope or pause and ask", policy)
+        self.assertTrue(
+            "never silently reject, defer, downgrade" in policy
+            and "successful recheck of the original failure scenario" in policy
+        )
+        self.assertIn(
+            "use `AskUserQuestion` only if that tool is actually exposed", policy
+        )
+        self.assertTrue(
+            "Otherwise end the turn with `PAUSED_NEEDS_USER`" in policy
+            and "Headless or noninteractive execution emits that pause and exits" in policy
+        )
+        self.assertTrue(
+            "at most five meaningful, materially changed fix/reverify passes" in policy
+            and "Never reverify the same head, claim, and environment" in policy
+        )
+        self.assertTrue(
+            "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy
+            and "continue only unrelated approved safe slices" in policy
+        )
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -405,8 +458,8 @@ class RemoraTests(unittest.TestCase):
         policy = remora.load_orchestration_policy()
         self.assertIn("`READY` means readiness only, never user approval", policy)
         self.assertIn("wait for explicit user approval before sending an implementation brief or writing", policy)
-        self.assertIn("outcome `verifier` retains its separate vocabulary", policy)
-        self.assertIn("only `CONFIRMED` or `REFUTED`", policy)
+        self.assertIn("outcome `verifier` retains its separate", policy)
+        self.assertIn("`CONFIRMED`/`REFUTED`/`INCONCLUSIVE` vocabulary", policy)
 
     def test_security_review_and_execution_have_separate_capabilities(self) -> None:
         definitions = remora.load_agent_definitions()

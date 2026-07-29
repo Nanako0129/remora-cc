@@ -325,6 +325,14 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("produced or inspected in this session", prompt)
         self.assertIn("sufficient for every required acceptance criterion", prompt)
         self.assertIn("lists each criterion checked", policy)
+        self.assertIn(
+            "REFUTED takes precedence when a reproducible P0-P2 blocker coexists",
+            prompt,
+        )
+        self.assertIn(
+            "any unevaluated required acceptance criterion makes the verdict INCONCLUSIVE",
+            prompt,
+        )
         self.assertIn("under any verdict include Priority P0-P4", prompt)
         self.assertIn(
             "any reproducible high-impact user or system failure that does not meet P0",
@@ -361,6 +369,14 @@ class RemoraTests(unittest.TestCase):
             and "successful recheck of the original failure scenario" in policy
         )
         self.assertIn(
+            "A documented regrade may use the verifier's cited evidence",
+            policy,
+        )
+        self.assertIn(
+            "stated missing evidence, contract, prerequisite, or environment",
+            policy,
+        )
+        self.assertIn(
             "use `AskUserQuestion` only if that tool is actually exposed", policy
         )
         self.assertTrue(
@@ -375,6 +391,7 @@ class RemoraTests(unittest.TestCase):
             and "tracked and staged diff" in policy
             and "untracked input paths plus content" in policy
             and "Never reverify the same complete identity" in policy
+            and "After five unsuccessful or still-blocking passes" in policy
         )
         self.assertTrue(
             "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy

@@ -323,13 +323,18 @@ class RemoraTests(unittest.TestCase):
             prompt,
         )
         self.assertIn("produced or inspected in this session", prompt)
+        self.assertIn("sufficient for every required acceptance criterion", prompt)
+        self.assertIn("lists each criterion checked", policy)
         self.assertIn("under any verdict include Priority P0-P4", prompt)
-        self.assertIn("any reproducible high-impact user or system failure", prompt)
+        self.assertIn(
+            "any reproducible high-impact user or system failure that does not meet P0",
+            prompt,
+        )
         self.assertTrue(all(
             rule in prompt and rule in policy
             for rule in (
                 "Priority measures real user or system impact, not whether a finding is central",
-                "any reproducible high-impact user or system failure",
+                "any reproducible high-impact user or system failure that does not meet P0",
                 "bounded and recoverable is P2 unless it independently meets P0 or high-impact P1",
             )
         ))
@@ -365,9 +370,11 @@ class RemoraTests(unittest.TestCase):
         self.assertTrue(
             "Blocking P1/P2 recovery shares at most five meaningful, materially changed "
             "fix/reverify passes" in policy
-            and "candidate-state fingerprint" in policy
-            and "never reverify the same fingerprint, claim, acceptance, and environment"
-            in policy
+            and "stable verification identity" in policy
+            and "available evidence or prerequisites" in policy
+            and "tracked and staged diff" in policy
+            and "untracked input paths plus content" in policy
+            and "Never reverify the same complete identity" in policy
         )
         self.assertTrue(
             "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy

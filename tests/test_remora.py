@@ -318,6 +318,10 @@ class RemoraTests(unittest.TestCase):
 
         self.assertIn("reproducible P0-P2 finding blocks the exact claim", prompt)
         self.assertIn("P3/P4 items are non-blocking advisories", prompt)
+        self.assertIn(
+            "Regressions caused by the reviewed implementation are claim-relevant",
+            prompt,
+        )
         self.assertTrue(all(
             rule in prompt and rule in policy
             for rule in (
@@ -355,13 +359,21 @@ class RemoraTests(unittest.TestCase):
             and "Headless or noninteractive execution emits that pause and exits" in policy
         )
         self.assertTrue(
-            "at most five meaningful, materially changed fix/reverify passes" in policy
-            and "Never reverify the same head, claim, and environment" in policy
+            "Blocking P1/P2 recovery shares at most five meaningful, materially changed "
+            "fix/reverify passes" in policy
+            and "candidate-state fingerprint" in policy
+            and "never reverify the same fingerprint, claim, and environment" in policy
         )
         self.assertTrue(
             "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy
             and "continue only unrelated approved safe slices" in policy
         )
+        architecture = (ROOT / "docs" / "architecture.md").read_text()
+        self.assertIn(
+            "`CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`",
+            architecture,
+        )
+        self.assertIn("Blocking P1/P2 recovery shares five", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()

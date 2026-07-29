@@ -288,7 +288,7 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("| Execution |", policy)
         self.assertIn("approved or otherwise authorized contract", policy)
         self.assertIn("| Verification |", policy)
-        self.assertIn("returns only `CONFIRMED` or `REFUTED`", policy)
+        self.assertIn("returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`", policy)
         self.assertIn("request the bare `READY` or structured `REVISE` contract", policy)
         self.assertIn("not Plan-readiness labels", policy)
 
@@ -305,10 +305,118 @@ class RemoraTests(unittest.TestCase):
             self.assertIn(field, plan_verifier["prompt"])
         self.assertEqual(plan_verifier["tools"], ["Read", "Glob", "Grep"])
         self.assertNotIn("Plan readiness", verifier["prompt"])
-        self.assertIn("exactly CONFIRMED or REFUTED", verifier["prompt"])
-        self.assertIn("never return READY or REVISE", verifier["prompt"])
+        self.assertIn("CONFIRMED when", verifier["prompt"])
+        self.assertIn("REFUTED only when", verifier["prompt"])
+        self.assertIn("or INCONCLUSIVE when", verifier["prompt"])
+        self.assertIn("never return ready or revise", verifier["prompt"].lower())
         self.assertIn("Write", verifier["disallowedTools"])
         self.assertIn("Agent", verifier["disallowedTools"])
+
+    def test_outcome_verifier_and_recovery_contract(self) -> None:
+        prompt = remora.load_agent_definitions()["verifier"]["prompt"]
+        policy = remora.load_orchestration_policy()
+
+        self.assertIn("reproducible P0-P2 finding blocks the exact claim", prompt)
+        self.assertIn("P3/P4 items are non-blocking advisories", prompt)
+        self.assertIn(
+            "Regressions caused by the reviewed implementation are claim-relevant",
+            prompt,
+        )
+        self.assertIn("produced or inspected in this session", prompt)
+        self.assertIn("sufficient for every required acceptance criterion", prompt)
+        self.assertIn("lists each criterion checked", policy)
+        self.assertIn(
+            "REFUTED takes precedence when a reproducible P0-P2 blocker coexists",
+            prompt,
+        )
+        self.assertIn(
+            "any unevaluated required acceptance criterion makes the verdict INCONCLUSIVE",
+            prompt,
+        )
+        self.assertIn("under any verdict include Priority P0-P4", prompt)
+        self.assertIn(
+            "any reproducible high-impact user or system failure that does not meet P0",
+            prompt,
+        )
+        self.assertTrue(all(
+            rule in prompt and rule in policy
+            for rule in (
+                "Priority measures real user or system impact, not whether a finding is central",
+                "any reproducible high-impact user or system failure that does not meet P0",
+                "bounded and recoverable is P2 unless it independently meets P0 or high-impact P1",
+            )
+        ))
+        self.assertTrue(
+            all(field in prompt for field in (
+                "Priority P0-P4", "Confidence high/medium/low",
+                "Evidence", "Expected", "Actual", "Recheck",
+            ))
+        )
+        self.assertTrue(all(
+            field in prompt
+            for field in ("Reason", "Missing evidence", "Retry condition")
+        ))
+        self.assertIn(
+            "without assuming the work is broken, distrusting evidence by default, "
+            "or maximizing finding volume",
+            prompt,
+        )
+        self.assertIn("Final disposition stays with the main session", policy)
+        self.assertIn("P0 freezes the affected slice", policy)
+        self.assertIn("Fix P1 within approved scope or pause and ask", policy)
+        self.assertTrue(
+            "Never silently reject, defer, downgrade" in policy
+            and "successful recheck of the original failure scenario" in policy
+        )
+        self.assertIn(
+            "A documented regrade may use the verifier's cited evidence",
+            policy,
+        )
+        self.assertIn(
+            "stated missing evidence, contract, prerequisite, or environment",
+            policy,
+        )
+        self.assertIn(
+            "within explicit acceptance, approved scope, and bounded",
+            policy,
+        )
+        self.assertIn(
+            "use `AskUserQuestion` only if that tool is actually exposed", policy
+        )
+        self.assertTrue(
+            "Otherwise end the turn with `PAUSED_NEEDS_USER`" in policy
+            and "Headless or noninteractive execution emits that pause and exits" in policy
+        )
+        self.assertTrue(
+            "Blocking P1/P2 recovery shares at most five meaningful, materially changed "
+            "fix/reverify passes" in policy
+            and "recovery budget and severity rules below apply to every verification run"
+            in policy
+            and "external evidence or prerequisites" in policy
+            and "immediately preceding verifier's verdict or output alone is not new evidence"
+            in policy
+            and "tracked and staged diff" in policy
+            and "untracked input paths plus content" in policy
+            and "input submodule's HEAD plus recursive working-tree content" in policy
+            and "artifact is explicitly the sole deliverable" in policy
+            and "Never reverify the same complete identity" in policy
+            and "After five unsuccessful or still-blocking passes" in policy
+        )
+        self.assertIn("headless likely-long run without an explicit mode", policy)
+        self.assertTrue(
+            "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy
+            and "continue only unrelated approved safe slices" in policy
+        )
+        architecture = (ROOT / "docs" / "architecture.md").read_text()
+        self.assertIn(
+            "`CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`",
+            architecture,
+        )
+        self.assertIn(
+            "Every verification run shares five materially changed P1/P2 recovery passes",
+            architecture,
+        )
+        self.assertIn("introduced P2 regressions remain blocking", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -405,8 +513,8 @@ class RemoraTests(unittest.TestCase):
         policy = remora.load_orchestration_policy()
         self.assertIn("`READY` means readiness only, never user approval", policy)
         self.assertIn("wait for explicit user approval before sending an implementation brief or writing", policy)
-        self.assertIn("outcome `verifier` retains its separate vocabulary", policy)
-        self.assertIn("only `CONFIRMED` or `REFUTED`", policy)
+        self.assertIn("outcome `verifier` retains its separate", policy)
+        self.assertIn("`CONFIRMED`/`REFUTED`/`INCONCLUSIVE` vocabulary", policy)
 
     def test_security_review_and_execution_have_separate_capabilities(self) -> None:
         definitions = remora.load_agent_definitions()

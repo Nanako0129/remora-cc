@@ -44,6 +44,9 @@ orchestration 啟動 Claude Code。Sol 負責規劃與關鍵審查，Luna 負責
 security evidence，才能做該 unit 第一次 Plan review。完整規則放在
 [架構文件](./docs/architecture.md#role-policy)。
 
+Outcome verification 只判斷明確 claim，回傳 `CONFIRMED`、`REFUTED` 或
+`INCONCLUSIVE`。長時間自主工作會先宣告 `AUTO` 或 `ASK`，不會擴張使用者授權。
+
 ## 架構與模型分配
 
 ```mermaid

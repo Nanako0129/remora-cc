@@ -377,6 +377,10 @@ class RemoraTests(unittest.TestCase):
             policy,
         )
         self.assertIn(
+            "within explicit acceptance, approved scope, and bounded",
+            policy,
+        )
+        self.assertIn(
             "use `AskUserQuestion` only if that tool is actually exposed", policy
         )
         self.assertTrue(
@@ -386,13 +390,19 @@ class RemoraTests(unittest.TestCase):
         self.assertTrue(
             "Blocking P1/P2 recovery shares at most five meaningful, materially changed "
             "fix/reverify passes" in policy
-            and "stable verification identity" in policy
-            and "available evidence or prerequisites" in policy
+            and "recovery budget and severity rules below apply to every verification run"
+            in policy
+            and "external evidence or prerequisites" in policy
+            and "immediately preceding verifier's verdict or output alone is not new evidence"
+            in policy
             and "tracked and staged diff" in policy
             and "untracked input paths plus content" in policy
+            and "input submodule's HEAD plus recursive working-tree content" in policy
+            and "artifact is explicitly the sole deliverable" in policy
             and "Never reverify the same complete identity" in policy
             and "After five unsuccessful or still-blocking passes" in policy
         )
+        self.assertIn("headless likely-long run without an explicit mode", policy)
         self.assertTrue(
             "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy
             and "continue only unrelated approved safe slices" in policy
@@ -402,7 +412,10 @@ class RemoraTests(unittest.TestCase):
             "`CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`",
             architecture,
         )
-        self.assertIn("Blocking P1/P2 recovery shares five", architecture)
+        self.assertIn(
+            "Every verification run shares five materially changed P1/P2 recovery passes",
+            architecture,
+        )
         self.assertIn("introduced P2 regressions remain blocking", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:

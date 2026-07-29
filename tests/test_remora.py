@@ -322,11 +322,14 @@ class RemoraTests(unittest.TestCase):
             "Regressions caused by the reviewed implementation are claim-relevant",
             prompt,
         )
+        self.assertIn("produced or inspected in this session", prompt)
+        self.assertIn("under any verdict include Priority P0-P4", prompt)
+        self.assertIn("any reproducible high-impact user or system failure", prompt)
         self.assertTrue(all(
             rule in prompt and rule in policy
             for rule in (
                 "Priority measures real user or system impact, not whether a finding is central",
-                "reproducible high-impact security or correctness failure",
+                "any reproducible high-impact user or system failure",
                 "bounded and recoverable is P2 unless it independently meets P0 or high-impact P1",
             )
         ))
@@ -346,9 +349,10 @@ class RemoraTests(unittest.TestCase):
             prompt,
         )
         self.assertIn("Final disposition stays with the main session", policy)
-        self.assertIn("Fix P0/P1 within approved scope or pause and ask", policy)
+        self.assertIn("P0 freezes the affected slice", policy)
+        self.assertIn("Fix P1 within approved scope or pause and ask", policy)
         self.assertTrue(
-            "never silently reject, defer, downgrade" in policy
+            "Never silently reject, defer, downgrade" in policy
             and "successful recheck of the original failure scenario" in policy
         )
         self.assertIn(
@@ -362,7 +366,8 @@ class RemoraTests(unittest.TestCase):
             "Blocking P1/P2 recovery shares at most five meaningful, materially changed "
             "fix/reverify passes" in policy
             and "candidate-state fingerprint" in policy
-            and "never reverify the same fingerprint, claim, and environment" in policy
+            and "never reverify the same fingerprint, claim, acceptance, and environment"
+            in policy
         )
         self.assertTrue(
             "mark the slice `PAUSED_VERIFICATION`, block dependents" in policy
@@ -374,6 +379,7 @@ class RemoraTests(unittest.TestCase):
             architecture,
         )
         self.assertIn("Blocking P1/P2 recovery shares five", architecture)
+        self.assertIn("introduced P2 regressions remain blocking", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()

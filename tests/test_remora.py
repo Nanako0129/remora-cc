@@ -291,6 +291,11 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`", policy)
         self.assertIn("request the bare `READY` or structured `REVISE` contract", policy)
         self.assertIn("not Plan-readiness labels", policy)
+        self.assertIn("Plan readiness evaluates the proposed acceptance check", policy)
+        self.assertIn(
+            "risk-triggered completed-work outcome verification exercises the primary user-visible flow",
+            policy,
+        )
 
     def test_plan_and_outcome_verifiers_have_separate_capabilities(self) -> None:
         plan_verifier = remora.load_agent_definitions()["plan-verifier"]
@@ -430,6 +435,8 @@ class RemoraTests(unittest.TestCase):
             architecture,
         )
         self.assertIn("introduced P2 regressions remain blocking", architecture)
+        self.assertIn("Risk-triggered completed-work outcome verification runs", architecture)
+        self.assertIn("material `FIX`, evidence-backed `DEFER`/`REJECT`", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -466,6 +473,12 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("The cap is not `READY`", policy)
         self.assertIn("user-directed continuation remains allowed", policy)
         self.assertIn("not the default recommendation", policy)
+        self.assertIn(
+            "a material `FIX`, genuine narrowing or split, or evidence-backed `DEFER`/`REJECT` may receive exactly one final fresh `plan-verifier` pass",
+            policy,
+        )
+        self.assertIn("this is not an automatic-loop reset", policy)
+        self.assertIn("another `REVISE` pauses or escalates the unit", policy)
         self.assertIn("Superficial rewrites or cosmetic slice splits cannot reset the count", policy)
         self.assertIn("A `READY` slice may be presented for explicit approval and executed while unrelated or later slices remain in planning", policy)
         self.assertIn("review only the next executable slice by default", policy)
@@ -584,6 +597,7 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("smallest coherent integration boundary", policy)
         self.assertIn("Tests, builds, and static checks are intermediate evidence", policy)
         self.assertIn("not a substitute when the trigger applies", policy)
+        self.assertIn("Risk-triggered completed-work outcome verification runs", policy)
         self.assertIn("cross-language or FFI seam", policy)
         self.assertIn("serialization or pre-aggregation data boundary", policy)
         self.assertIn("irreversible operation", policy)
@@ -592,7 +606,8 @@ class RemoraTests(unittest.TestCase):
     def test_policy_requires_plan_convergence_or_escalation(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("Do not resubmit a substantially unchanged slice Plan", policy)
-        self.assertIn("material revision or new evidence", policy)
+        self.assertIn("after the two-verdict brake", policy)
+        self.assertIn("evidence-backed `DEFER`/`REJECT`", policy)
         self.assertIn("use the main-session `FIX`/`DEFER`/`REJECT` disposition", policy)
         self.assertIn("Ask only for an unresolved P0/P1", policy)
         self.assertIn("never treat the budget cap as `READY`", policy)

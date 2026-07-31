@@ -2,6 +2,17 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.17 - 2026-07-31
+
+Calibrate independent review convergence around risk-triggered work. Plan
+readiness now assesses proposed acceptance checks, while completed-work outcome
+verification drives the primary flow first. After a two-verdict readiness brake,
+a material fix, narrowing, split, or evidence-backed disposition may open a
+fresh capped readiness epoch without restoring blind resubmission loops.
+
+Synchronize the architecture contract with the installed policy and advance the
+pinned installation runbook to v0.1.17.
+
 ## 0.1.16 - 2026-07-29
 
 Calibrate completed-work verification around exact acceptance criteria and

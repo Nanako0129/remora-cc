@@ -79,7 +79,7 @@ translation、OAuth、retry、cooldown 與 billing 都由 gateway 負責。
 | `mech-executor` | `gpt-5.6-luna` | medium | 機械式實作 |
 | `executor` | `gpt-5.6-luna` | max | 需要判斷的實作 |
 | `verifier` | `gpt-5.6-sol` | high | 對抗式結果驗證 |
-| `security-executor` | `gpt-5.6-sol` | max | 已批准的安全實作 |
+| `security-executor` | `gpt-5.6-sol` | xhigh | 已批准的安全實作 |
 
 | Context 模式 | Claude binary | Client window | 使用時機 |
 | --- | --- | ---: | --- |

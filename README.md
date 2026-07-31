@@ -38,17 +38,19 @@ interactive option. Exiting the child session removes every override.
 | Files under `~/.claude` | Unchanged | Never written |
 | Runtime marker | Absent | `REMORA_ACTIVE=1` in the child |
 
-Large Plans use a reviewed program envelope followed by independently
-approvable execution slices. Two automatic `REVISE` verdicts pause only the
-affected readiness unit; unrelated `READY` slices may proceed after explicit
-approval. By default, the next executable slice is reviewed and presented for
-approval before downstream slices. Security-sensitive units require read-only
-security evidence before the first Plan review for that unit. The complete contract belongs in
+Large Plans use a program envelope followed by independently approvable
+execution slices. Concrete security, irreversible/external, data, release, or
+cross-component acceptance risk triggers independent review; “non-trivial”
+alone does not. After two automatic `REVISE` verdicts, the main session stops
+resubmitting, dispositions each blocker as `FIX`, `DEFER`, or `REJECT`, and
+asks only for unresolved high-impact or product and authority decisions. The
+complete contract belongs in
 [the architecture document](./docs/architecture.md#role-policy).
 
-Outcome verification is claim-scoped and returns `CONFIRMED`, `REFUTED`, or
-`INCONCLUSIVE`. Long autonomous work declares `AUTO` or `ASK` and never expands
-the user's authority.
+Risk-triggered outcome verification follows primary-flow acceptance. Normal
+recovery is one targeted recheck; five passes remain only a high-risk emergency
+ceiling. Long autonomous work declares `AUTO` or `ASK` and never expands the
+user's authority.
 
 ## Architecture and model map
 

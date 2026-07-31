@@ -7,8 +7,9 @@ All notable changes to remora are documented here.
 Calibrate independent review convergence around risk-triggered work. Plan
 readiness now assesses proposed acceptance checks, while completed-work outcome
 verification drives the primary flow first. After a two-verdict readiness brake,
-a material fix, narrowing, split, or evidence-backed disposition may open a
-fresh capped readiness epoch without restoring blind resubmission loops.
+a material fix, narrowing, split, or evidence-backed disposition may receive
+exactly one final fresh pass within the capped unit epoch, without resetting the
+automatic loop.
 
 Synchronize the architecture contract with the installed policy and advance the
 pinned installation runbook to v0.1.17.

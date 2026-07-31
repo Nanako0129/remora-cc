@@ -607,10 +607,18 @@ class RemoraTests(unittest.TestCase):
         policy = remora.load_orchestration_policy()
         self.assertIn("Do not resubmit a substantially unchanged slice Plan", policy)
         self.assertIn("after the two-verdict brake", policy)
-        self.assertIn("evidence-backed `DEFER`/`REJECT`", policy)
+        self.assertIn(
+            "requires one of a material `FIX`, an evidence-backed `DEFER`/`REJECT`, or a genuine narrowing or split",
+            policy,
+        )
         self.assertIn("use the main-session `FIX`/`DEFER`/`REJECT` disposition", policy)
         self.assertIn("Ask only for an unresolved P0/P1", policy)
         self.assertIn("never treat the budget cap as `READY`", policy)
+        runbook = (ROOT / "install" / "AGENT-INSTALL.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "when the independent-review trigger applies, gates the stable-ID program envelope",
+            runbook,
+        )
 
     def test_completed_recon_output_is_collected_without_rerunning(self) -> None:
         policy = remora.load_orchestration_policy()

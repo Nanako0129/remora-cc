@@ -27,7 +27,7 @@ test -f "$TMP/.config/remora-cc/config.toml"
 test -f "$TMP/.local/share/remora-cc/agents/orchestration.md"
 grep -Fq '## Bounded slice Plan-readiness contract' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"
-grep -Fq 'automatic resubmission pauses only that unit' \
+grep -Fq 'stop resubmitting and independently disposition every blocker' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"
 grep -Fq 'stable readiness-unit ID' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"

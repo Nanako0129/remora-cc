@@ -37,15 +37,16 @@ orchestration 啟動 Claude Code。Sol 負責規劃與關鍵審查，Luna 負責
 | `~/.claude` 內的檔案 | 不變 | 永不寫入 |
 | Runtime marker | 無 | 只在 child 設定 `REMORA_ACTIVE=1` |
 
-大型 Plan 先審核 program envelope，再拆成可獨立批准的 execution slices。
-兩次自動 `REVISE` 只會暫停受影響的 readiness unit；無關的 `READY` slice
-仍可在明確批准後繼續。預設只先審下一個可執行 slice，取得 `READY` 後就
-交給使用者批准，不會預先審完下游 slices。安全敏感的 unit 必須先取得唯讀
-security evidence，才能做該 unit 第一次 Plan review。完整規則放在
+大型 Plan 以 program envelope 加上可獨立批准的 execution slices 組成。
+只有安全、不可逆／外部動作、資料、release 或跨元件 acceptance 的具體風險
+才觸發獨立 review；「non-trivial」本身不算。兩次自動 `REVISE` 後，主
+session 會停止重送，將每項 finding 判為 `FIX`、`DEFER` 或 `REJECT`，
+只把未解決的高影響、產品或授權決策交給使用者。完整規則放在
 [架構文件](./docs/architecture.md#role-policy)。
 
-Outcome verification 只判斷明確 claim，回傳 `CONFIRMED`、`REFUTED` 或
-`INCONCLUSIVE`。長時間自主工作會先宣告 `AUTO` 或 `ASK`，不會擴張使用者授權。
+風險觸發的 outcome verification 會先驗 primary flow。正常恢復只做一次
+定向複驗；五輪僅保留為高風險緊急上限。長時間自主工作會先宣告 `AUTO`
+或 `ASK`，不會擴張使用者授權。
 
 ## 架構與模型分配
 
@@ -113,7 +114,7 @@ Runtime 行為與參考文件：
 
 ```text
 請閱讀並遵循這份安裝 runbook：
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.16/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.17/install/AGENT-INSTALL.md
 
 先只執行唯讀 preflight。列出所有預計的檔案變更、trust boundary、
 下載來源與驗證步驟。在我明確批准以前，不要寫入任何內容。
@@ -126,7 +127,7 @@ token 或 OAuth 檔案。
 ### 手動 source install
 
 ```bash
-git clone --branch v0.1.16 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.17 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

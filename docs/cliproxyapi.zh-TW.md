@@ -241,6 +241,55 @@ remora 會做同一個唯讀查詢，但安全預設遵循原生 Claude Code 對
 | `[context].auto_compact_percent` | Child auto-compaction 比例；Codex 預設 90% |
 | 既有 Claude auto-compact 環境變數 | 使用者明確 override；Calico 模式仍會裁到 Codex client ceiling |
 
+## Compact 請求硬化（Calico + gateway）
+
+remora 只決定 **何時** 可能觸發 auto-compact（context map 與比例）。它**不**改寫
+compact 的 model／effort／thinking，也**預設不**注入 `CALICO_COMPACT_*`。
+child 只會帶 `REMORA_ACTIVE=1`，讓通過驗證的 Calico binary 啟用 remora 範圍的
+compact 行為。
+
+| 層 | 擁有者 | 責任 |
+|---|---|---|
+| remora launcher | remora | child-only `REMORA_ACTIVE=1`；calico context map 與 auto-compact 比例 |
+| Compact body policy | Calico（`REMORA_ACTIVE=1` 且 query source 為 `compact`） | 可選 env：`CALICO_COMPACT_EFFORT`（預設 `medium`）、`CALICO_COMPACT_MODEL`（空＝沿用 session model）、`CALICO_COMPACT_DISABLE_THINKING`（`1` 才關 thinking；預設保留 session thinking） |
+| Compact class guard | CLIProxyAPI | 僅在 `X-Calico-Request-Source: compact`：絕對 wall-clock + stream single-shot；永不改寫 model／effort／thinking |
+
+Calico 會送 `x-calico-request-source: compact`，讓 gateway 不必解析 body 就能分類
+compact。remora 請求會先清掉自訂 header 裡同名（大小寫不敏感）的 spoof；真正的
+compact 才再掛上 Calico 擁有的值。
+
+目前 stock `eceasy/cli-proxy-api:latest` 沒有實作 compact class guard。相容 build
+必須包含此功能；在 stock 上，下方的 `streaming.compact` 區塊會被靜默忽略（未知 YAML
+key 不會被拒絕），compact request 仍沿用 gateway 預設的 stream 行為。remora 不會安裝、
+升級或挑選 CLIProxyAPI build，只會把 child 指向設定中的 `base_url`。
+
+remora + Calico 長 session 建議的 gateway 設定：
+
+```yaml
+streaming:
+  compact:
+    enabled: true
+    # 成功的 auto-compact 在約 245K context 上常要 2–5 分鐘 user-wait。
+    # 90s 會誤殺正常 compact；600 是設定上限。
+    max-duration-seconds: 600
+```
+
+官方 Claude binary、非 remora 的 Calico 啟動維持原生 compact。gateway compact
+guard 採 fail-closed：必須 `enabled: true` **且** 有 Calico header。env 預設與
+細節見 [Calico Claude README](https://github.com/Nanako0129/calico-claude#optional-remora-compact-policy)。
+
+Claude Code 的 stream idle 地板是 5 分鐘（`max(env, 300000)`）。remora 會在
+child 注入 `CLAUDE_STREAM_IDLE_TIMEOUT_MS` 與 `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS`
+（預設 **600000**），降低長 compact 在撞到閘道 600s 前就被 `context canceled`
+中止的機率。設定在 `[runtime]`：
+
+```toml
+[runtime]
+stream_idle_timeout_ms = 600000
+byte_stream_idle_timeout_ms = 600000
+# 設為 0 表示不注入該 env（沿用繼承值／Claude 預設）
+```
+
 ## 實驗性 active-turn bridge
 
 目前 stock `eceasy/cli-proxy-api:latest` 不會在 Claude 分開送出的 tool-result request 之間保存 Codex `x-codex-turn-state`。相容 build 必須包含 v1 bridge，並明確啟用：

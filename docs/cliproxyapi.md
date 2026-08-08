@@ -236,6 +236,58 @@ The optional `calico` mode requires a verified Calico Claude binary. It takes th
 | `[context].auto_compact_percent` | Child auto-compaction ratio; Codex defaults to 90% |
 | Existing Claude auto-compact environment variables | Explicit user overrides, capped to the Codex client ceiling in Calico mode |
 
+## Compact request hardening (Calico + gateway)
+
+remora decides **when** auto-compact may fire (context map + ratio). It does **not**
+rewrite compact product fields and does **not** inject `CALICO_COMPACT_*` by default.
+Only `REMORA_ACTIVE=1` is set on the child so a verified Calico binary can opt into
+remora-scoped compact behavior.
+
+| Layer | Owner | Responsibility |
+|---|---|---|
+| remora launcher | remora | Child-only `REMORA_ACTIVE=1`; calico context map and auto-compact ratio |
+| Compact body policy | Calico (when `REMORA_ACTIVE=1` and query source is `compact`) | Optional env: `CALICO_COMPACT_EFFORT` (default `medium`), `CALICO_COMPACT_MODEL` (empty keeps session model), `CALICO_COMPACT_DISABLE_THINKING` (`1` forces thinking off; default leaves session thinking) |
+| Compact class guard | CLIProxyAPI | On `X-Calico-Request-Source: compact` only: absolute wall-clock + single-shot stream retries; never rewrites model/effort/thinking |
+
+Calico emits `x-calico-request-source: compact` so the gateway can classify compact
+without inspecting the body. Spoofed custom headers with that name are stripped on
+every remora request; the owned value is re-added only for true compact sources.
+
+The stock `eceasy/cli-proxy-api:latest` image does not implement the compact class
+guard. A compatible build must contain it; on stock the `streaming.compact` block
+below is silently ignored because unknown YAML keys are not rejected, so compact
+requests keep the gateway default stream behavior. remora never installs, upgrades,
+or selects a CLIProxyAPI build — it only points the child at the configured
+`base_url`.
+
+Recommended gateway config for remora + Calico long sessions:
+
+```yaml
+streaming:
+  compact:
+    enabled: true
+    # Successful auto-compacts often need 2–5 minutes of user-wait wall-clock on
+    # ~245K contexts. 90s mis-kills healthy attempts; 600 is the config cap.
+    max-duration-seconds: 600
+```
+
+Stock Claude binaries and non-remora Calico launches keep native compact behavior.
+Gateway compact guards stay fail-closed until both `enabled: true` and the Calico
+header are present. Details and env defaults live in the
+[Calico Claude README](https://github.com/Nanako0129/calico-claude#optional-remora-compact-policy).
+
+Claude Code also floors stream idle at 5 minutes (`max(env, 300000)`). remora injects
+child-only `CLAUDE_STREAM_IDLE_TIMEOUT_MS` and `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS`
+(default **600000**) so long compact streams are less likely to abort with
+`context canceled` before the gateway 600s cap. Configure under `[runtime]`:
+
+```toml
+[runtime]
+stream_idle_timeout_ms = 600000
+byte_stream_idle_timeout_ms = 600000
+# Set either key to 0 to skip injection for that env.
+```
+
 ## Experimental active-turn bridge
 
 The stock `eceasy/cli-proxy-api:latest` image does not currently preserve Codex `x-codex-turn-state` across separate Claude tool-result requests. A compatible build must contain the v1 bridge and must opt in explicitly:

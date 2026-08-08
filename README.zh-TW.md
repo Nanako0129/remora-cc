@@ -94,6 +94,7 @@ Runtime 行為與參考文件：
 | Fallback | 注入 `fallbackModel: []`；拒絕 CLI `--fallback-model` | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` 依序合成 caller 與 remora policy | [Role policy](./docs/architecture.md#role-policy) |
 | Context 與 Calico | Metadata 過期或不一致時 fail closed | [Gateway semantics](./docs/architecture.md#gateway-semantics) |
+| Compact 硬化 | remora 只標 `REMORA_ACTIVE`；body 歸 Calico、class guard 歸 gateway | [Compact 請求硬化](./docs/cliproxyapi.zh-TW.md#compact-請求硬化calico--gateway) |
 | Active-turn bridge | 實驗性功能，只支援有限 topology | [Gateway runbook](./docs/cliproxyapi.zh-TW.md#實驗性-active-turn-bridge) |
 
 ## 需求
@@ -114,7 +115,7 @@ Runtime 行為與參考文件：
 
 ```text
 請閱讀並遵循這份安裝 runbook：
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.17/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.18/install/AGENT-INSTALL.md
 
 先只執行唯讀 preflight。列出所有預計的檔案變更、trust boundary、
 下載來源與驗證步驟。在我明確批准以前，不要寫入任何內容。
@@ -127,7 +128,7 @@ token 或 OAuth 檔案。
 ### 手動 source install
 
 ```bash
-git clone --branch v0.1.17 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.18 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

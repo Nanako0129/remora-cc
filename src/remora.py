@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.1.17"
+VERSION = "0.1.18"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
@@ -41,6 +41,12 @@ DEFAULT_AUTO_COMPACT_PERCENT = 90
 AUTO_COMPACT_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 AUTO_COMPACT_PERCENT_ENV = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
 CLAUDE_EXTRA_BODY_ENV = "CLAUDE_CODE_EXTRA_BODY"
+# Claude Code floors stream idle at max(env, 300000). Raise for remora/gateway
+# long streams (especially calico compact summaries that can exceed 5 minutes).
+STREAM_IDLE_TIMEOUT_ENV = "CLAUDE_STREAM_IDLE_TIMEOUT_MS"
+BYTE_STREAM_IDLE_TIMEOUT_ENV = "CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS"
+DEFAULT_STREAM_IDLE_TIMEOUT_MS = 600_000
+MIN_STREAM_IDLE_TIMEOUT_MS = 300_000
 COMPOSE_SYSTEM_PROMPT_ENV = "REMORA_COMPOSE_SYSTEM_PROMPT"
 CALLER_SYSTEM_PROMPT_ENV = "REMORA_CALLER_SYSTEM_PROMPT"
 FAST_SERVICE_TIER = "priority"
@@ -115,6 +121,8 @@ PROTECTED_SETTINGS_ENV = frozenset(
         "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY",
         "CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
         "ENABLE_TOOL_SEARCH",
+        STREAM_IDLE_TIMEOUT_ENV,
+        BYTE_STREAM_IDLE_TIMEOUT_ENV,
         CALICO_CONTEXT_MAP_ENV,
         CALICO_DISPLAY_PERCENT_ENV,
         "CORALLINE_CONFIG",
@@ -156,6 +164,8 @@ def validate_config(config: dict[str, Any]) -> None:
     missing = [name for name, value in required.items() if not str(value or "").strip()]
     if missing:
         raise RemoraError(f"missing required configuration: {', '.join(missing)}")
+
+    apply_stream_idle_timeouts(config.get("runtime", {}), {})
 
     definitions = load_agent_definitions()
     model_map = config.get("agent_models", {})
@@ -980,6 +990,35 @@ def prepare_coralline_config(env: dict[str, str], source_config: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def apply_stream_idle_timeouts(
+    runtime: dict[str, Any], env: dict[str, str]
+) -> None:
+    """Inject Claude stream idle floors for long remora/gateway streams.
+
+    Claude Code uses max(env, 300000) for stream idle. Values below 300000 are
+    ineffective. Set runtime keys to 0 to skip injection and keep inherited env.
+    """
+    for key, env_name in (
+        ("stream_idle_timeout_ms", STREAM_IDLE_TIMEOUT_ENV),
+        ("byte_stream_idle_timeout_ms", BYTE_STREAM_IDLE_TIMEOUT_ENV),
+    ):
+        raw = runtime.get(key, DEFAULT_STREAM_IDLE_TIMEOUT_MS)
+        if raw is None:
+            continue
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise RemoraError(f"runtime.{key} must be an integer millisecond value")
+        value = raw
+        if value == 0:
+            # Explicit opt-out: do not override parent/inherited environment.
+            continue
+        if value < MIN_STREAM_IDLE_TIMEOUT_MS:
+            raise RemoraError(
+                f"runtime.{key} must be >= {MIN_STREAM_IDLE_TIMEOUT_MS} "
+                f"(Claude's floor) or 0 to skip injection"
+            )
+        env[env_name] = str(value)
+
+
 def build_launch(
     config: dict[str, Any],
     claude_args: list[str],
@@ -1092,6 +1131,7 @@ def build_launch(
     env["ENABLE_TOOL_SEARCH"] = "true" if runtime.get("enable_tool_search", False) else "false"
     if runtime.get("clear_subagent_model_override", True):
         env.pop("CLAUDE_CODE_SUBAGENT_MODEL", None)
+    apply_stream_idle_timeouts(runtime, env)
 
     context_policy = resolve_context_policy(config, token=token, online=require_token)
     if context_policy["mode"] == "calico" and not calico_context_supported(claude_bin):
@@ -1269,6 +1309,8 @@ def dry_run(config: dict[str, Any], args: list[str], *, fast: bool = False) -> N
                 "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY",
                 "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
                 "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
+                STREAM_IDLE_TIMEOUT_ENV,
+                BYTE_STREAM_IDLE_TIMEOUT_ENV,
                 "CALICO_MODEL_CONTEXT_WINDOWS",
                 "CALICO_CONTEXT_DISPLAY_PERCENT",
                 "ENABLE_TOOL_SEARCH",

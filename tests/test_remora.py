@@ -100,6 +100,68 @@ class RemoraTests(unittest.TestCase):
         self.assertNotIn("CALICO_MODEL_CONTEXT_WINDOWS", env)
         self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", env)
         self.assertEqual(os.environ["CLAUDE_CODE_SUBAGENT_MODEL"], "wrong")
+        self.assertEqual(env[remora.STREAM_IDLE_TIMEOUT_ENV], "600000")
+        self.assertEqual(env[remora.BYTE_STREAM_IDLE_TIMEOUT_ENV], "600000")
+
+    def test_stream_idle_timeout_override(self) -> None:
+        env: dict[str, str] = {}
+        remora.apply_stream_idle_timeouts(
+            {
+                "stream_idle_timeout_ms": 900_000,
+                "byte_stream_idle_timeout_ms": 1_200_000,
+            },
+            env,
+        )
+        self.assertEqual(env[remora.STREAM_IDLE_TIMEOUT_ENV], "900000")
+        self.assertEqual(env[remora.BYTE_STREAM_IDLE_TIMEOUT_ENV], "1200000")
+
+    def test_stream_idle_timeout_opt_out_preserves_inherited_env(self) -> None:
+        env = {
+            remora.STREAM_IDLE_TIMEOUT_ENV: "caller-stream",
+            remora.BYTE_STREAM_IDLE_TIMEOUT_ENV: "caller-byte",
+        }
+        remora.apply_stream_idle_timeouts(
+            {"stream_idle_timeout_ms": 0, "byte_stream_idle_timeout_ms": 0},
+            env,
+        )
+        self.assertEqual(env[remora.STREAM_IDLE_TIMEOUT_ENV], "caller-stream")
+        self.assertEqual(env[remora.BYTE_STREAM_IDLE_TIMEOUT_ENV], "caller-byte")
+
+    def test_stream_idle_timeout_none_preserves_inherited_env(self) -> None:
+        env = {
+            remora.STREAM_IDLE_TIMEOUT_ENV: "caller-stream",
+            remora.BYTE_STREAM_IDLE_TIMEOUT_ENV: "caller-byte",
+        }
+        remora.apply_stream_idle_timeouts(
+            {"stream_idle_timeout_ms": None, "byte_stream_idle_timeout_ms": None},
+            env,
+        )
+        self.assertEqual(env[remora.STREAM_IDLE_TIMEOUT_ENV], "caller-stream")
+        self.assertEqual(env[remora.BYTE_STREAM_IDLE_TIMEOUT_ENV], "caller-byte")
+
+    def test_stream_idle_timeout_rejects_noninteger_and_below_floor(self) -> None:
+        for key, value in (
+            ("stream_idle_timeout_ms", "600000"),
+            ("byte_stream_idle_timeout_ms", 1.5),
+            ("stream_idle_timeout_ms", -1),
+            ("byte_stream_idle_timeout_ms", 299_999),
+        ):
+            with self.subTest(key=key, value=value):
+                with self.assertRaisesRegex(remora.RemoraError, key):
+                    remora.apply_stream_idle_timeouts({key: value}, {})
+
+    def test_stream_idle_timeout_rejects_bool_like_context_integer_validation(self) -> None:
+        for value in (True, False):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(remora.RemoraError, "stream_idle_timeout_ms"):
+                    remora.apply_stream_idle_timeouts(
+                        {"stream_idle_timeout_ms": value}, {}
+                    )
+
+    def test_config_validation_rejects_invalid_stream_idle_timeout(self) -> None:
+        self.config["runtime"]["stream_idle_timeout_ms"] = 299_999
+        with self.assertRaisesRegex(remora.RemoraError, "stream_idle_timeout_ms"):
+            remora.validate_config(self.config)
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_fast_mode_adds_priority_body_without_parent_mutation(self) -> None:
@@ -271,6 +333,25 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("approval gate", policy)
         self.assertIn("verification contract", policy)
         self.assertIn("The two layers compose", policy)
+
+    def test_policy_uses_active_role_fit_and_mechanical_default(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("Treat role fit as an active delegation signal", policy)
+        self.assertIn("proactively delegate it to the least expensive matching named role", policy)
+        self.assertIn("Use the smallest useful execution shape", policy)
+        self.assertIn("Stable multi-file mechanical repetition has a rebuttable delegation default", policy)
+        self.assertIn("dispatch exactly one `mech-executor` before the main session edits", policy)
+        self.assertIn("must not edit the worker-owned scope while it runs", policy)
+        self.assertIn("Merely being slightly faster is insufficient", policy)
+
+    def test_policy_preserves_unfinished_objectives_across_user_input(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("An unfinished root objective remains active across turns", policy)
+        self.assertIn("status or explanation request does not resolve it", policy)
+        self.assertIn("exact resume point", policy)
+        self.assertIn("Do not issue a normal final response while the active objective remains incomplete", policy)
+        self.assertIn("`PAUSED_NEEDS_USER`", policy)
+        self.assertIn("does not expand approval", policy)
 
     def test_policy_has_a_plan_first_two_turn_lifecycle(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -634,6 +715,11 @@ class RemoraTests(unittest.TestCase):
                 self.assertIn("genuinely new follow-up work", prompt)
                 self.assertIn("do not repeat a completed", prompt)
 
+        self.assertIn("Brief each worker once with the goal", policy)
+        self.assertIn("After two failed attempts, change the task boundary", policy)
+        self.assertIn("Long-running processes belong to the main session", policy)
+        self.assertIn("Leaf agents must not detach", policy)
+
     def test_policy_preserves_positive_delegation_paths(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("choose by net benefit", policy)
@@ -645,7 +731,7 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("external or tool latency can overlap", policy)
         self.assertIn("across separate directories", policy)
         self.assertIn("only duplicate startup and synthesis", policy)
-        self.assertIn("stable multi-file repetition", policy)
+        self.assertIn("Stable multi-file mechanical repetition", policy)
 
     @mock.patch.dict(
         os.environ,

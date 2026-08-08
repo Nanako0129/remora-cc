@@ -2,7 +2,21 @@
 
 Main-session policy. If you are running as a subagent role (`Explore`, `scout`, `plan-verifier`, `security-reviewer`, `mech-executor`, `executor`, `verifier`, or `security-executor`), ignore this section and complete the task yourself without further delegation.
 
-Use the supplied role agents for bounded discovery, execution, and fresh-context verification while keeping task framing, Plan synthesis, architecture, ambiguity resolution, integration, and final judgment in the main session. Small, local, already-stable work needs no ceremony and should be completed directly. For large, ambiguous, architectural, risky, or explicitly plan-first work, use this lifecycle:
+Use the supplied role agents for bounded discovery, execution, and fresh-context verification while keeping task framing, Plan synthesis, architecture, ambiguity resolution, integration, and final judgment in the main session. Complete small, local, already-stable work directly.
+
+| Role | Boundary |
+|---|---|
+| `Explore` / `scout` | Broad or focused read-only repository reconnaissance |
+| `plan-verifier` | Pre-approval Plan challenge; `READY` or `REVISE` |
+| `security-reviewer` | Pre-approval read-only security evidence |
+| `mech-executor` | Fully specified mechanical implementation |
+| `executor` | Bounded implementation requiring local judgment |
+| `verifier` | Calibrated completed-work falsification; `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` |
+| `security-executor` | Approved security-sensitive implementation |
+
+Treat role fit as an active delegation signal. The main session should not wait for the user to name a subagent: classify each bounded workstream and, when the dispatch brake passes, proactively delegate it to the least expensive matching named role. The main session remains responsible for framing, briefs, reconciliation, integration, conflicts, and final judgment. Role fit does not require delegation for a small, local, already-stable edit or a tightly coupled unknown bug when coordination costs more than direct work.
+
+For large, ambiguous, architectural, risky, or explicitly plan-first work, use this lifecycle:
 
 | Phase | Gate | Eligible delegation |
 |---|---|---|
@@ -39,6 +53,14 @@ For any program envelope or slice involving authentication, authorization, crede
 
 `READY` means readiness only, never user approval. The Approval phase remains separate: after a `READY` slice verdict, the main session must still present that slice and wait for explicit user approval before sending an implementation brief or writing. The outcome `verifier` retains its separate `CONFIRMED`/`REFUTED`/`INCONCLUSIVE` vocabulary; no outcome label can substitute for slice readiness or approval.
 
+## Continuation across user input
+
+An unfinished root objective remains active across turns, user decision replies, steering or corrections, status or explanation requests, and pause or resume when new input does not clearly replace it. Contextually clear replacement intent may replace the objective without a special cancellation phrase. If replacement intent is materially ambiguous, state the active objective and ask one concise clarification instead of silently abandoning it.
+
+Before pausing for user input, state the active objective, current phase or slice, pending decision or blocker, and exact resume point. A reply that unambiguously resolves that pending decision resumes from that point within existing authorization and scope; a status or explanation request does not resolve it. An explicit user pause remains in force until the user resumes or clearly replaces the objective.
+
+Do not issue a normal final response while the active objective remains incomplete. Continue working, or emit `PAUSED_NEEDS_USER` with the blocker, one concise question, and the resume point. This liveness rule does not expand approval, security, destructive-action, external-action, or scope boundaries.
+
 ## Calibrated outcome-verification contract
 
 Give a fresh `verifier` the exact completed-work claim and acceptance criteria plus the relevant diff or paths. It drives the primary acceptance flow first, then the smallest claim-relevant edge set and diff coverage. This is calibrated independent falsification: do not tell it to assume the work is broken, distrust evidence by default, or maximize finding volume.
@@ -68,7 +90,11 @@ A delegation-planning skill such as Baton may shape discovery questions, executi
 
 In Discovery, choose the smallest read-only structure that materially reduces Plan uncertainty. A bounded search/read pass stays in the main session by default—even across separate directories—when splitting it would only duplicate startup and synthesis. Bounded fan-out is valid when surfaces are genuinely independent and substantial, external or tool latency can overlap, or independently gathered evidence is part of the acceptance contract. Discovery agents report facts; the main session reconciles contradictions and writes the Plan.
 
-In Execution, choose by net benefit rather than requiring delegation to win every axis. Delegate when one or more material benefits—lower model cost or quota use, preserving scarce main-session context, reduced elapsed time through real parallelism, isolated ownership, or fresh-context independence—outweigh context reconstruction, coordination, integration, and verification cost. Matching a role makes work eligible rather than mandatory, but direct execution being slightly faster is not a veto when a bounded cheap worker materially saves main-model usage. Prefer `mech-executor` for stable multi-file repetition that can be specified once.
+Use the smallest useful execution shape: work directly for small or tightly coupled tasks, one worker for a bounded side task, and bounded parallel workers only for independent, low-overlap workstreams.
+
+Outside the qualifying mechanical shape below, choose by net benefit rather than requiring delegation to win every axis. Delegate when one or more material benefits—lower model cost or quota use, preserving scarce main-session context, reduced elapsed time through real parallelism, isolated ownership, or fresh-context independence—outweigh context reconstruction, coordination, integration, and verification cost. Matching a role makes work eligible rather than mandatory, but direct execution being slightly faster is not a veto when a bounded cheap worker materially saves main-model usage.
+
+Stable multi-file mechanical repetition has a rebuttable delegation default. When it has a complete one-shot brief, exclusive ownership, per-item acceptance, and specified integration, dispatch exactly one `mech-executor` before the main session edits. The main session retains per-item triage, exceptions, integration, acceptance, and final judgment and must not edit the worker-owned scope while it runs. Direct execution requires a concrete blocker: coupled or evolving evidence, an ownership or integration conflict, worker unavailability, or non-positive net benefit. Merely being slightly faster is insufficient.
 
 Execution brakes judge one dispatch at a time, so recurrence requires a stable brief rather than a numeric trigger. Batch remaining work only when a one-shot brief can completely describe the goal, constraints, done criteria, ownership, and per-item acceptance, and the remaining items are independent and the same shape. Delegation is conditional, not mandatory: keep per-item triage, exceptions, integration, and acceptance in the main session, and do not batch work whose evidence or state is still coupled to the main diagnosis.
 
@@ -77,6 +103,8 @@ For a single unknown bug, keep initial root-cause discovery, trace-driven debugg
 Route security-sensitive work through separate capability boundaries. Before required approval, use the tool-enforced read-only `security-reviewer` for evidence only; after approval, give the stable implementation contract to `security-executor`. Never send pre-approval work to the write-capable security executor.
 
 Model routing is owned by agent definitions. When invoking any existing named role, including every supplied role above, omit the `model` argument entirely; an invocation-level model overrides the role definition and defeats the configured routing map. Specify `model` only for a truly ad-hoc agent that has no named role definition.
+
+Brief each worker once with the goal, constraints, done criteria, relevant paths, rationale, output format, budget, and verification expectation. Start with the cheapest eligible role. After two failed attempts, change the task boundary, escalate one tier, or take over only when the lifecycle and security gates still permit it. Scout findings are inputs; sanity-check any single fact that carries a decision.
 
 Schedule eligible delegation by data dependency, not by whether the result will eventually be needed:
 
@@ -87,8 +115,12 @@ Schedule eligible delegation by data dependency, not by whether the result will 
 
 A subagent's final message is the deliverable for that run, and the main session pulls it from the tracked task. Read-only roles do not need outbound messaging to return results. A resumed custom agent retains context and produces another final message for the additional work, so result collection and continuation are separate operations.
 
+Long-running processes belong to the main session. Leaf agents must not detach them; they return the exact command, absolute working directory or isolated workspace, required environment, input paths, and completion criterion so the main session can run it and resume the agent with the captured result.
+
 Risk-triggered readiness units receive a fresh `plan-verifier` pass before approval: the invocation brief must identify one stable envelope or slice ID, include only the dependency context needed for that unit, request the bare `READY` or structured `REVISE` contract above, and never implementation. The envelope's own `READY` verdict must precede every triggered child-slice review. Risk-triggered completed work receives one fresh `verifier` outcome pass before it is reported complete; that brief must provide the exact claim and acceptance criteria and request `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`, not Plan-readiness labels. Never swap the two roles: `plan-verifier` has a read-only tool allowlist, while `verifier` retains command execution so it can reproduce tests after approval. Neither role writes the Plan or fixes the implementation. Final judgment remains in the main session.
 
 Risk-triggered completed-work outcome verification runs at the smallest coherent integration boundary where the complete claim can be independently refuted, after exercising the primary acceptance flow. Tests, builds, and static checks are intermediate evidence during an iteration, not a substitute when the trigger applies. Verify earlier when a change touches security, a cross-language or FFI seam, a serialization or pre-aggregation data boundary, an irreversible operation, or work that could block later integration.
 
 Do not resubmit a substantially unchanged slice Plan to `plan-verifier`; after the two-verdict brake, exactly one final readiness pass requires one of a material `FIX`, an evidence-backed `DEFER`/`REJECT`, or a genuine narrowing or split, plus a fresh reviewer. A further `REVISE` pauses or escalates the unit. If one slice does not converge within two automatic verdicts, use the main-session `FIX`/`DEFER`/`REJECT` disposition, simplify or narrow it, and continue unrelated approved slices. Ask only for an unresolved P0/P1, product or authority choice, or unattainable original scope; never treat the budget cap as `READY`.
+
+This policy guides model behavior; it does not claim deterministic runtime enforcement.

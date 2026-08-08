@@ -2,6 +2,12 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.18 - 2026-08-09
+
+Align the session-only orchestration policy with pilotfish-codex v1.3.2 model-facing semantics. Role fit is an active delegation signal; stable multi-file mechanical work has a rebuttable `mech-executor` default; unfinished objectives survive steering, decisions, status requests, and pauses; worker briefs are one-shot and long-running processes remain main-session owned. The policy preserves the existing Claude transport and richer review/recovery contracts; it describes model-facing behavior and is not runtime enforcement.
+
+Raise child `CLAUDE_STREAM_IDLE_TIMEOUT_MS` and `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS` defaults to 600000ms. Runtime overrides require integer milliseconds at least 300000, `0` skips injection and preserves inherited values, `None` skips injection, and booleans are rejected consistently with existing integer validation. Compact body policy remains Calico-owned, while the absolute class guard belongs to a compatible CLIProxyAPI build; remora only supplies the child marker and context policy.
+
 ## 0.1.17 - 2026-07-31
 
 Calibrate independent review convergence around risk-triggered work. Plan

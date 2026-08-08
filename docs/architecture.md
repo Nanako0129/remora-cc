@@ -112,6 +112,14 @@ Codex active-turn continuity also crosses this boundary. Native Codex preserves 
 
 Context capacity crosses that boundary: the gateway catalog describes its route, while ChatGPT-authenticated Codex can replace the bundled model catalog with remotely supplied runtime metadata. Those two sources temporarily diverged at 372K and 272K. Stock Claude Code also assigns unknown custom model ids a separate 200K client window. remora's default `stock` policy therefore reports the truthful 200K window and leaves Claude's native compact pipeline untouched. The optional `calico` policy queries `/v1/models?client_version=remora`, reads only fresh model metadata from the local Codex cache, and takes the smaller per-model value before supplying an exact child-only map to a separately verified Calico binary. It then reports 95% usable context and applies the 90% compact ratio exactly once. Discovery is read-only, uses a 272K TOML fallback for the Codex ceiling, and never rewrites either catalog.
 
+Compact product policy is the same ownership split. remora only marks the child with
+`REMORA_ACTIVE=1` and owns when auto-compact may fire; a verified Calico binary may
+then rewrite compact body effort/thinking/optional model under that marker and emit
+`x-calico-request-source: compact`. A compatible CLIProxyAPI build may apply an
+absolute wall-clock and single-shot stream retries for that class only, without
+rewriting product fields. remora does not inject `CALICO_COMPACT_*` or gateway
+`streaming.compact` keys; see [CLIProxyAPI integration](./cliproxyapi.md#compact-request-hardening-calico--gateway).
+
 This separation makes failures diagnosable:
 
 | Error location | Typical evidence | Owner |

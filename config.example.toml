@@ -27,6 +27,9 @@ codex_cache_ttl_seconds = 300
 # codex_models_cache = "~/.codex/models_cache.json"
 effective_window_percent = 95
 # Used only by mode = "calico". Stock mode leaves Claude's compact pipeline untouched.
+# Compact body policy (effort/thinking/model) is owned by Calico under REMORA_ACTIVE=1,
+# not by remora TOML. Optional child envs: CALICO_COMPACT_EFFORT, CALICO_COMPACT_MODEL,
+# CALICO_COMPACT_DISABLE_THINKING. Gateway absolute timeout is streaming.compact on CPA.
 auto_compact_percent = 90
 
 [agent_models]
@@ -54,3 +57,7 @@ claude_binary = "claude"
 max_tool_use_concurrency = 3
 enable_tool_search = false
 clear_subagent_model_override = true
+# Claude stream idle floors (ms). Claude uses max(env, 300000); raise for long
+# gateway/compact streams. Default 600000 when omitted. Set 0 to skip injection.
+stream_idle_timeout_ms = 600000
+byte_stream_idle_timeout_ms = 600000

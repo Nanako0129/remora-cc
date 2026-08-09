@@ -89,7 +89,8 @@ class RemoraTests(unittest.TestCase):
         self.assertNotIn("_routing_fallback", payload["plan-verifier"])
         policy = command[command.index("--append-system-prompt") + 1]
         self.assertIn("run_in_background: true", policy)
-        self.assertIn("Use foreground execution only", policy)
+        self.assertIn("launch every eligible delegation", policy)
+        self.assertIn("instead of switching that delegation to foreground execution", policy)
         self.assertIn("omit the `model` argument entirely", policy)
         self.assertIn("only for a truly ad-hoc agent", policy)
         self.assertIn("apply that phase's dispatch brake", policy)
@@ -492,6 +493,9 @@ class RemoraTests(unittest.TestCase):
         )
         self.assertIn("drive the primary acceptance flow first", prompt)
         self.assertIn("do not reopen adjacent hardening", prompt)
+        self.assertIn("Never start or detach a long-running command", prompt)
+        self.assertIn("execution tool's native background mode", prompt)
+        self.assertNotIn("Run long commands in the foreground", prompt)
         self.assertIn("produced or inspected in this session", prompt)
         self.assertIn("sufficient for every required acceptance criterion", prompt)
         self.assertIn("lists each criterion checked", policy)
@@ -795,7 +799,16 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("Brief each worker once with the goal", policy)
         self.assertIn("After two failed attempts, change the task boundary", policy)
         self.assertIn("Long-running processes belong to the main session", policy)
-        self.assertIn("Leaf agents must not detach", policy)
+        self.assertIn("execution tool's native background mode", policy)
+        self.assertIn("Leaf agents must not launch or detach", policy)
+        self.assertIn("`&`, `nohup`, or `disown`", policy)
+        self.assertIn("instead of silently running the command in the foreground", policy)
+
+        for name in ("mech-executor", "executor", "verifier", "security-executor"):
+            with self.subTest(name=name):
+                prompt = agents[name]["prompt"]
+                self.assertIn("Never start or detach a long-running command", prompt)
+                self.assertIn("execution tool's native background mode", prompt)
 
     def test_policy_preserves_positive_delegation_paths(self) -> None:
         policy = remora.load_orchestration_policy()

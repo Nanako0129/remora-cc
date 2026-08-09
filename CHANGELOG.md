@@ -2,6 +2,18 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.20 - 2026-08-09
+
+Require every eligible delegation to use Claude Code's background mode,
+including when its result is the main session's next dependency. The existing
+dispatch brake still decides whether delegation is worthwhile, and the parent
+still collects each result before dependent work or the final response.
+
+Long-running commands are now main-session owned and use the execution tool's
+native background mode rather than shell detachment. Every command-capable leaf
+role returns the exact command, workspace, environment, inputs, and completion
+criterion to the parent instead of starting or detaching long-running work.
+
 ## 0.1.19 - 2026-08-09
 
 Correct the session-only orchestration policy against the official

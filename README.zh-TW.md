@@ -44,6 +44,14 @@ session 會停止重送，將每項 finding 判為 `FIX`、`DEFER` 或 `REJECT`�
 只把未解決的高影響、產品或授權決策交給使用者。完整規則放在
 [架構文件](./docs/architecture.md#role-policy)。
 
+Intent routing 會依請求選擇 `execute`（清楚且有界）、`explore_then_plan`
+（廣泛或高影響）與 `co_discover`（開放式想法）。Discovery 有 grounding
+floor 與 stopping ceiling；approval 前的 discovery 必須唯讀，
+`next_gate=approval` 會在 execution 前停下。Turn-scoped `review_intent`
+只接受清楚且明確的 `fast`、`default`、`strict`；模糊、引用、否定或衝突
+cue 一律回到 `default`。安全、風險、批准與外部動作的 mandatory gate 永遠
+優先。這是 orchestration policy，不宣稱 deterministic runtime enforcement。
+
 風險觸發的 outcome verification 會先驗 primary flow。正常恢復只做一次
 定向複驗；五輪僅保留為高風險緊急上限。長時間自主工作會先宣告 `AUTO`
 或 `ASK`，不會擴張使用者授權。
@@ -115,7 +123,7 @@ Runtime 行為與參考文件：
 
 ```text
 請閱讀並遵循這份安裝 runbook：
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.18/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.19/install/AGENT-INSTALL.md
 
 先只執行唯讀 preflight。列出所有預計的檔案變更、trust boundary、
 下載來源與驗證步驟。在我明確批准以前，不要寫入任何內容。
@@ -128,7 +136,7 @@ token 或 OAuth 檔案。
 ### 手動 source install
 
 ```bash
-git clone --branch v0.1.18 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.19 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

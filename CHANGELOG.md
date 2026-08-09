@@ -2,6 +2,23 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.19 - 2026-08-09
+
+Correct the session-only orchestration policy against the official
+pilotfish-codex v1.6.0 source. This adds the three adaptive task modes,
+turn-scoped `review_intent`, bounded route signals and discovery budgets,
+decision cards that require the actual `AskUserQuestion` tool when exposed,
+and the advisory `direction_checkpoint` contract
+while preserving Claude transport, native isolation, existing approval gates,
+and the exact top-level `CONFIRMED`/`REFUTED`/`INCONCLUSIVE` verifier vocabulary.
+Remora emits no optional auto-review signal or scheduler, and this release does
+not claim deterministic runtime enforcement.
+
+The v0.1.18 policy used a stale pilotfish-codex v1.3.2 basis. v0.1.19 corrects
+that basis against official pilotfish-codex v1.6.0. No v1.6.1 behavior or
+Codex-native hook, configuration, receipt, installer, runtime-version, or
+model-routing behavior is ported.
+
 ## 0.1.18 - 2026-08-09
 
 Align the session-only orchestration policy with pilotfish-codex v1.3.2 model-facing semantics. Role fit is an active delegation signal; stable multi-file mechanical work has a rebuttable `mech-executor` default; unfinished objectives survive steering, decisions, status requests, and pauses; worker briefs are one-shot and long-running processes remain main-session owned. The policy preserves the existing Claude transport and richer review/recovery contracts; it describes model-facing behavior and is not runtime enforcement.

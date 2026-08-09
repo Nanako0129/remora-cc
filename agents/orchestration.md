@@ -16,17 +16,118 @@ Use the supplied role agents for bounded discovery, execution, and fresh-context
 
 Treat role fit as an active delegation signal. The main session should not wait for the user to name a subagent: classify each bounded workstream and, when the dispatch brake passes, proactively delegate it to the least expensive matching named role. The main session remains responsible for framing, briefs, reconciliation, integration, conflicts, and final judgment. Role fit does not require delegation for a small, local, already-stable edit or a tightly coupled unknown bug when coordination costs more than direct work.
 
+## Adaptive intent routing
+
+Before choosing a Plan shape or role, classify the request by intent,
+impact, reversibility, and authority. These initial modes are descriptive
+upstream-style names, not a closed keyword classifier:
+
+| Mode | Use when | First safe move |
+|---|---|---|
+| `execute` | Outcome and scope are clear and the next step is bounded, even when an existing authority gate still blocks it | If authority is pending, stop at the required gate; otherwise take the smallest authorized local step or delegate the least expensive matching role |
+| `explore_then_plan` | Direction is clear but the change is broad, cross-component, migration-heavy, high-impact, or costly to reverse | Inspect the repository, record assumptions, and form a provisional Plan for one slice |
+| `co_discover` | The request is an idea or broad outcome without a stable problem, target user, MVP, or acceptance boundary | Ask focused questions and run only low-cost reconnaissance or a smallest useful read-only experiment |
+
+Semantic ambiguity, technical uncertainty, and authority/risk uncertainty are
+separate. Clear intent does not grant authority: a bounded release request
+may remain `execute` with `next_gate=approval`; `next_gate=approval` stops before any
+execution or mutation. Pre-approval Discovery is read-only. Executable,
+mutating, external, destructive, release, or credential-bearing probes require
+the existing authority, permission, approval, and containment gates; a route
+mode, discovery budget, or exhausted ceiling never grants write authority.
+
+### Turn-scoped review intent
+
+Keep `review_intent` separate from `task_mode`. A clear explicit preference in
+the current prompt may be `fast`, `default`, or `strict`; it is turn-scoped and
+never changes impact, reversibility, approval, security, or authority
+classification. Ambiguous, conflicting, quoted, negated, inferred, or vague
+urgency cues fall back to `default`.
+
+- `fast` skips optional review, extra Sol calls, and non-required reasoning on
+  non-mandatory work. User-named tests and every existing safety, security,
+  permission, and approval gate still run; fast never skips a required test or gate.
+- `default` follows the existing risk policy and is the fallback without a
+  clear explicit cue.
+- `strict` completes the primary review and test path. An optional consumer may
+  add one read-only Luna baseline and at most one read-only Sol
+  `semantic_adjudication` only after a fingerprinted semantic disagreement on
+  the same input. If that same-fingerprint, read-only capability is unavailable,
+  strict does not invent a child, consumer, scheduler, or reviewer; it completes
+  the primary path only.
+  A write-capable executor is never a reviewer.
+
+Mandatory security, risk, approval, review, permission, release, destructive,
+irreversible, and external gates take precedence over explicit intent; explicit
+intent takes precedence over optional/default routing. Remora emits no
+`codex-auto-review` signal and owns no optional review scheduler. Missing or
+unavailable optional consumers never weaken mandatory controls.
+
+```text
+mandatory security/risk/approval/review gates > explicit current-turn review_intent > optional/default routing
+```
+
+Record these logical route signals in the internal decision:
+
+- `task_mode`: `execute`, `explore_then_plan`, or `co_discover`.
+- `intent_confidence`: `clear`, `partial`, or `unclear`.
+- `change_impact`: `trivial`, `low`, `material`, `high`, or `critical`.
+- `reversible`: `yes`, `partial`, or `no`.
+- `discovery_budget`: `none`, `minimum`, `bounded`, or `deep`.
+- `budget_exhausted`: whether the selected discovery ceiling was reached.
+- `evidence_sufficient`: whether evidence supports the next gate.
+- `blocking_decisions`: a bounded list of user choices that can change the
+  outcome, authority, risk, or acceptance.
+- `next_gate`: `discovery`, `approval`, `execution`, or `direction_check`.
+
+`change_impact` uses five bands: `trivial` for direct answers or no-write
+tasks, `low` for isolated reversible work, `material` for a module or
+user-behavior boundary, `high` for migration, release, or expensive-to-reverse
+work, and `critical` for destructive, external, security-sensitive, or
+otherwise irreversible work.
+
+Discovery has a grounding floor and a stopping ceiling. One logical discovery
+unit is one targeted inspection, search, or cheap read-only probe; mechanical
+reads from one command count as one unit. Default bands are:
+
+| Budget | Minimum evidence | Maximum default |
+|---|---|---|
+| `none` | Context or common sense is sufficient | Zero discovery units |
+| `minimum` | At least one grounding check when local state matters | Two units |
+| `bounded` | Enough targeted evidence to compare the next safe options | Six units and one cheap read-only probe |
+| `deep` | Evidence for cross-component, high-impact, or costly-to-reverse work | Ten units and two cheap read-only probes, then narrow, pause, or ask |
+
+Stop early when evidence no longer changes the route or a cheaper read-only
+probe answers the question. If the floor cannot be met, state the uncertainty;
+if the ceiling is exhausted, narrow, pause, or ask. Exhaustion is never write
+authorization.
+
+For material product, authority, risk, irreversible-cost, or unresolved
+direction choices, call the actual `AskUserQuestion` tool when it is exposed in
+the main session; do not substitute a plain-text question or merely imitate its
+format. The tool call provides a concise decision card with the current
+interpretation, recommended default, included and excluded scope, options, and
+the next reversible slice. If `AskUserQuestion` is unavailable, emit
+`PAUSED_NEEDS_USER` with one concise plain-text question, choices, a
+recommendation, and the exact resume point. A decision card is a user
+checkpoint, not a replacement for the internal Plan or an approval bypass.
+
 For large, ambiguous, architectural, risky, or explicitly plan-first work, use this lifecycle:
 
 | Phase | Gate | Eligible delegation |
 |---|---|---|
-| Discovery | Stabilize the question, allowed scope, evidence format, and stop condition. The final outcome and implementation Plan may still be unknown. | Bounded read-only `Explore` or `scout` work on disjoint evidence surfaces whose findings materially reduce Plan uncertainty. |
+| Discovery | Stabilize the question, allowed scope, evidence format, and stop condition. The final outcome and implementation Plan may still be unknown; pre-approval discovery is read-only and stops at its next gate. | Bounded read-only `Explore` or `scout` work on disjoint evidence surfaces whose findings materially reduce Plan uncertainty. |
 | Plan | The main session synthesizes one Plan containing outcome, non-goals, scope, dependencies, exclusive ownership, sequence, verification, budgets, and stop conditions. | When the independent-review trigger below applies, a fresh, tool-enforced read-only `plan-verifier` applies the bounded readiness contract; the main session owns every revision and the final synthesis. |
 | Approval | For large, architectural, risky, or explicitly plan-first work, present the Plan and wait for explicit user approval. A broad initial request is not approval of a Plan the user has not seen. | Read-only clarification only. Do not send an implementation brief or edit source before required approval. |
 | Execution | The approved or otherwise authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `mech-executor` for fully specified repetition, `executor` for bounded local judgment, and `security-executor` for security-sensitive work. |
 | Verification | The integrated result is concrete enough to test as an exact completed-work claim with acceptance criteria. | When the independent-review trigger applies, a fresh `verifier` returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. |
 
 Independent review is risk-triggered, not a synonym for non-trivial. Use it when the user requests it or the claim crosses a security or trust boundary, destructive, irreversible, or external mutation, a data, schema, serialization, migration, or release boundary, or a material cross-component interaction in acceptance. File count, model concern, routine docs or UI work, and a bounded fail-soft bug alone do not trigger it. Plan readiness evaluates the proposed acceptance check; risk-triggered completed-work outcome verification exercises the primary user-visible flow against acceptance before adversarial review, and review never substitutes for that evidence.
+
+For every triggered material pre-approval Plan, the main session must call the
+actual named-role `plan-verifier` before sending any readiness recommendation.
+If that role is unavailable, pause, report verification unavailable, and never locally substitute `READY` or `REVISE`, even when the Plan looks incomplete or
+the user did not name an agent.
 
 ## Bounded slice Plan-readiness contract
 
@@ -49,9 +150,28 @@ After the envelope is `READY`, review only the next executable slice by default.
 
 Fully specify only the next executable slice. Downstream slice entries retain stable IDs, outcomes, dependency edges, ownership boundaries, acceptance intent, and rollback/stop summaries, but defer implementation detail until that slice becomes next. Missing future detail is not a blocker for the current slice.
 
-For any program envelope or slice involving authentication, authorization, credentials, identity, privacy, secrets, cryptography, validation, hardening, or vulnerabilities, finish the read-only `security-reviewer` and carry its findings and evidence gaps into the slice Plan, program envelope, and decision ledger before the first `plan-verifier` call for that unit. Never launch those reviews concurrently. Refresh the security evidence before a later readiness pass only when a revision changes the trust boundary or invalidates a finding.
+For any program envelope or slice involving authentication, authorization, credentials, identity, privacy, secrets, cryptography, validation, hardening, or vulnerabilities, the main session must call the actual named-role `security-reviewer` first, finish that read-only review, and carry its findings and evidence gaps into the slice Plan, program envelope, and decision ledger before calling the actual named-role `plan-verifier` (before the first `plan-verifier` call for that unit). Never launch those reviews concurrently. If either named role is unavailable, pause and report verification unavailable. Refresh the security evidence before a later readiness pass only when a revision changes the trust boundary or invalidates a finding.
 
 `READY` means readiness only, never user approval. The Approval phase remains separate: after a `READY` slice verdict, the main session must still present that slice and wait for explicit user approval before sending an implementation brief or writing. The outcome `verifier` retains its separate `CONFIRMED`/`REFUTED`/`INCONCLUSIVE` vocabulary; no outcome label can substitute for slice readiness or approval.
+
+At a stable slice boundary, the existing `verifier` may receive an explicit
+`direction_checkpoint` contract containing the original outcome,
+non-negotiable constraints, current slice acceptance, latest verified good
+checkpoint, current evidence, and proposed next slice or path. The top-level verifier verdict remains
+exactly `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`:
+
+- `CONFIRMED` means no reproducible P0-P2 finding blocks the current path and
+  requires advisory `Direction: CONTINUE`.
+- `REFUTED` means a reproducible P0-P2 finding blocks the current path and
+  requires advisory `Direction: PIVOT` when the outcome remains valid but the
+  path or assumption must change, or `Direction: ROLLBACK` when an invariant or
+  acceptance condition is broken. `ROLLBACK` identifies the latest verified
+  good checkpoint.
+- `INCONCLUSIVE` means required input or evidence is insufficient.
+  `INCONCLUSIVE` cannot advance; no Direction line can override it.
+
+Direction remains advisory beneath the verdict and cannot satisfy outcome
+verification, Plan readiness, or approval.
 
 ## Continuation across user input
 
@@ -78,7 +198,7 @@ Role verdicts are evidence, not implementation or scope authority. Final disposi
 - Severity rules apply to every verification run. The five-pass budget below is an emergency ceiling for high-risk recovery, not a quota; `AUTO`/`ASK` clauses apply only to likely long autonomous work.
 - Before likely long autonomous work, announce `AUTO` or `ASK` for the current task. Sleeping, eating, or leaving the agent alone grants no authority: offer the modes and wait. A headless likely-long run without an explicit mode emits `PAUSED_NEEDS_USER` and exits. An explicit request to continue while the user is away selects `AUTO` and must be announced. `/goal` preserves only the objective; it selects neither mode nor broader authority.
 - `AUTO` permits approved-scope reversible work and main-session P2 adjudication only. It grants no new version-control, publish, install, credential, destructive or irreversible, external-mutation, scope-expansion, or spend authority; separately granted authority remains valid.
-- In `ASK`, use `AskUserQuestion` only if that tool is actually exposed in the current Remora/Claude-compatible session. Otherwise end the turn with `PAUSED_NEEDS_USER`, one concise question, choices, and a recommendation. Headless or noninteractive execution emits that pause and exits without polling, retrying, guessing, or continuing the affected slice. The main session asks; a child never does.
+- In `ASK`, the main session must call `AskUserQuestion` when that tool is actually exposed in the current Remora/Claude-compatible session and must not replace the call with a plain-text question. Otherwise end the turn with `PAUSED_NEEDS_USER`, one concise question, choices, and a recommendation. Headless or noninteractive execution emits that pause and exits without polling, retrying, guessing, or continuing the affected slice. The main session asks; a child never does.
 - P0 freezes the affected slice and dependents; a cross-cutting P0 stops the program. Automatic containment is limited to agent-owned work and evidence, never external action.
 - Default recovery is one targeted recheck after fixing a reproduced blocker: rerun the original reproduction plus a bounded basic regression, not a new adjacent-hardening audit. High-risk, claim-critical P1/P2 recovery may use at most five meaningful, materially changed fix/reverify passes; passes 3-5 are emergency recovery. Each pass needs a material change to candidate, claim, acceptance, contract, external evidence or prerequisites, or environment; the immediately preceding verifier's verdict or output alone is not new evidence. Fingerprint the complete tested candidate from committed head, tracked and staged diff, untracked input paths plus content, and each input submodule's HEAD plus recursive working-tree content. Include a tested-artifact digest when applicable; it may replace the source fingerprint only when that artifact is explicitly the sole deliverable. Never reverify the same complete identity. Stop earlier when the next pass would only search adjacent risk. After five unsuccessful or still-blocking passes, mark the slice `PAUSED_VERIFICATION`, block dependents, and continue only unrelated approved safe slices when the risk is not cross-cutting.
 - A blocking P2 counts against that shared budget and joins the next coherent integration-boundary verification. P3/P4 receive no dedicated loop.

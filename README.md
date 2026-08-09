@@ -47,6 +47,15 @@ asks only for unresolved high-impact or product and authority decisions. The
 complete contract belongs in
 [the architecture document](./docs/architecture.md#role-policy).
 
+Intent routing uses `execute` for clear bounded work, `explore_then_plan` for
+broad or high-impact work, and `co_discover` for open-ended ideas. Discovery
+has a bounded grounding floor and stopping ceiling; pre-approval discovery is
+read-only and `next_gate=approval` stops before execution. Turn-scoped
+`review_intent` accepts only clear explicit `fast`, `default`, or `strict`
+requests; ambiguous, quoted, negated, and conflicting cues use `default`.
+Mandatory security, risk, approval, and external-action gates always win. This
+is an orchestration policy, not a claim of deterministic runtime enforcement.
+
 Risk-triggered outcome verification follows primary-flow acceptance. Normal
 recovery is one targeted recheck; five passes remain only a high-risk emergency
 ceiling. Long autonomous work declares `AUTO` or `ASK` and never expands the
@@ -118,7 +127,7 @@ Give Claude Code this immutable-tag runbook:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.18/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.19/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -132,7 +141,7 @@ It never asks for a bearer token or OAuth file.
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.18 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.19 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

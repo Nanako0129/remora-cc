@@ -68,6 +68,44 @@ Foreground versus background is a parent-orchestrator decision, so it cannot be 
 
 Scheduling begins only after the current phase's dispatch brake. Discovery needs a stable question, allowed scope, evidence format, and stop condition; it does not require a pre-decided implementation outcome. The main session reconciles evidence and synthesizes one Plan. Large, architectural, risky, or explicitly plan-first work then waits for explicit approval before any implementation brief or source edit. Execution requires stable scope, exclusive ownership, constraints, done criteria, integration, and verification. Completed-work verification starts only when there is a concrete integrated claim to refute.
 
+### Adaptive route and review intent
+
+The policy chooses `execute` for clear bounded work, `explore_then_plan` for
+broad or high-impact work, and `co_discover` for an open-ended idea. The route
+records `intent_confidence`, five-band `change_impact`, `reversible`, a
+`discovery_budget` with `budget_exhausted`, `evidence_sufficient`, bounded
+`blocking_decisions`, and `next_gate`. Pre-approval discovery is read-only;
+`next_gate=approval` stops before execution, and no exhausted budget grants
+write authority. The default discovery bands are `none` (0 units), `minimum`
+(1-2), `bounded` (up to 6 plus one cheap read-only probe), and `deep` (up to
+10 plus two read-only probes).
+`change_impact` means trivial/no-write, low/isolated reversible,
+material/module or user-behavior boundary, high/migration or release, and
+critical/destructive, external, or security-sensitive work.
+
+Material product, authority, risk, irreversible-cost, or unresolved-direction
+choices use the actual main-session `AskUserQuestion` tool when it is exposed;
+plain text cannot substitute for that call. If the tool is unavailable, the
+policy fails closed with `PAUSED_NEEDS_USER`, one concise question and choices,
+a recommendation, and the exact resume point.
+
+`review_intent` is turn-scoped and independent of `task_mode`: clear explicit
+`fast`, `default`, or `strict` cues are accepted, while ambiguous, quoted,
+negated, conflicting, and vague cues use `default`. Mandatory security, risk,
+approval, review, permission, release, destructive, irreversible, and external gates
+precede that preference. `fast` skips only optional review; `strict` completes
+the primary path and may use a read-only same-fingerprint
+`semantic_adjudication` only when that capability already exists. remora emits no optional auto-review signal or
+scheduler and never uses a write-capable executor as a reviewer.
+
+At a `direction_checkpoint`, the top-level outcome remains exactly
+`CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. A required `Direction:
+CONTINUE|PIVOT|ROLLBACK` line for `CONFIRMED` or `REFUTED` remains advisory in
+authority: `CONFIRMED` maps to an
+unblocked `CONTINUE`, while a reproducible P0-P2 `REFUTED` maps to `PIVOT` or
+`ROLLBACK`. `INCONCLUSIVE` cannot advance. This route and checkpoint contract
+is policy guidance, not deterministic runtime enforcement.
+
 Plan and outcome verification use deliberately different roles, capabilities, and vocabularies. Independent review is triggered by concrete security, irreversible or external, data, migration, release, or cross-component acceptance risk, not by file count or “non-trivial” alone. Large work still uses a program envelope plus independently approvable slices, but only triggered units require `READY`. `REVISE` returns all known claim-relevant P0-P2 blockers in one pass; P3/P4, optional detail, and adjacent hardening do not block. After two automatic revisions, the main session stops blind resubmission; a material `FIX`, genuine narrowing or split, or evidence-backed `DEFER`/`REJECT` may receive one final fresh `plan-verifier` pass, not a loop reset. A further `REVISE` pauses or escalates the unit. It then continues independent slices. User input is reserved for unresolved P0/P1, product or authority choices, or an original scope that can no longer be met. `READY` remains readiness evidence rather than approval, and security-sensitive units still complete read-only `security-reviewer` evidence before readiness.
 
 Outcome verification starts with the primary acceptance flow and stays calibrated to the exact claim, returning `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. Role verdicts are evidence rather than implementation or scope authority; the main session owns `FIX`, `DEFER`, and `REJECT` dispositions. `REFUTED` still requires a reproducible P0-P2 blocker, P3/P4 remain advisory, and introduced P2 regressions remain blocking. Normal recovery is one targeted recheck of the original reproduction plus a bounded regression. Five materially changed P1/P2 passes remain an emergency ceiling for high-risk, claim-critical recovery, never a quota; stop earlier when another pass would only search adjacent risk. Long autonomous work declares `AUTO` or `ASK`; neither mode expands user authority.

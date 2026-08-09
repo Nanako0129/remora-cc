@@ -344,6 +344,82 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("must not edit the worker-owned scope while it runs", policy)
         self.assertIn("Merely being slightly faster is insufficient", policy)
 
+    def test_policy_adaptive_modes_and_authority_stop(self) -> None:
+        policy = remora.load_orchestration_policy()
+        for mode in ("`execute`", "`explore_then_plan`", "`co_discover`"):
+            self.assertIn(mode, policy)
+        self.assertIn("If authority is pending, stop at the required gate", policy)
+        self.assertIn("smallest authorized local step", policy)
+        self.assertIn("pre-approval discovery is read-only", policy)
+        self.assertIn("smallest useful read-only experiment", policy)
+        self.assertIn("`next_gate=approval` stops before any", policy)
+        self.assertIn("credential-bearing probes require", policy)
+        self.assertIn("never grants write authority", policy)
+
+    def test_policy_review_intent_is_turn_scoped_and_fail_closed(self) -> None:
+        policy = remora.load_orchestration_policy()
+        for cue in ("`fast`", "`default`", "`strict`", "quoted", "negated", "conflicting"):
+            self.assertIn(cue, policy)
+        self.assertIn("fast never skips a required test or gate", policy)
+        self.assertIn("one read-only Luna baseline and at most one read-only Sol", policy)
+        self.assertIn("same-fingerprint", policy)
+        self.assertIn("does not invent a child", policy)
+        self.assertIn("A write-capable executor is never a reviewer", policy)
+        self.assertIn("Mandatory security, risk, approval", policy)
+        self.assertIn("Remora emits no\n`codex-auto-review` signal", policy)
+        self.assertNotIn("owns optional review scheduler", policy)
+
+    def test_policy_route_signals_budgets_decision_card_and_direction_contract(self) -> None:
+        policy = remora.load_orchestration_policy()
+        for signal in (
+            "`task_mode`", "`intent_confidence`", "`change_impact`", "`reversible`",
+            "`discovery_budget`", "`budget_exhausted`", "`evidence_sufficient`",
+            "`blocking_decisions`", "`next_gate`",
+        ):
+            self.assertIn(signal, policy)
+        for budget in ("`none`", "`minimum`", "`bounded`", "`deep`"):
+            self.assertIn(budget, policy)
+        self.assertIn("call the actual `AskUserQuestion` tool when it is exposed", policy)
+        self.assertIn("do not substitute a plain-text question", policy)
+        self.assertIn("If `AskUserQuestion` is unavailable, emit\n`PAUSED_NEEDS_USER`", policy)
+        self.assertNotIn("show a concise AskUserQuestion-style decision card", policy)
+        self.assertIn("top-level verifier verdict remains\nexactly `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`", policy)
+        self.assertIn("requires advisory `Direction: CONTINUE`", policy)
+        self.assertIn("requires advisory `Direction: PIVOT`", policy)
+        self.assertIn("or `Direction: ROLLBACK`", policy)
+        self.assertIn("`INCONCLUSIVE` cannot advance", policy)
+
+    def test_security_review_requires_named_roles_and_fix_disposition(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("For every triggered material pre-approval Plan", policy)
+        self.assertIn("must call the\nactual named-role `plan-verifier`", policy)
+        self.assertIn("call the actual named-role `security-reviewer` first", policy)
+        self.assertIn("before calling the actual named-role `plan-verifier`", policy)
+        self.assertIn("If either named role is unavailable, pause and report", policy)
+        self.assertIn("never locally substitute `READY` or `REVISE`", policy)
+        self.assertIn("label it `FIX`, `DEFER`, or `REJECT`", policy)
+        reviewer = remora.load_agent_definitions()["security-reviewer"]
+        verifier = remora.load_agent_definitions()["plan-verifier"]
+        self.assertIn("Never execute commands", reviewer["prompt"])
+        self.assertEqual(reviewer["tools"], ["Read", "Glob", "Grep", "WebSearch", "WebFetch"])
+        self.assertEqual(verifier["tools"], ["Read", "Glob", "Grep"])
+
+    def test_direction_checkpoint_keeps_outcome_verdict_top_level(self) -> None:
+        prompt = remora.load_agent_definitions()["verifier"]["prompt"]
+        self.assertIn("exactly one contract", prompt)
+        self.assertIn("original outcome, non-negotiable constraints, current slice acceptance", prompt)
+        self.assertIn("latest verified good checkpoint", prompt)
+        self.assertIn("CONFIRMED means no reproducible P0-P2 finding blocks", prompt)
+        self.assertIn("requires advisory Direction: CONTINUE", prompt)
+        self.assertIn("REFUTED means a reproducible P0-P2 finding blocks", prompt)
+        self.assertIn("Direction: PIVOT", prompt)
+        self.assertIn("Direction: ROLLBACK", prompt)
+        self.assertIn("INCONCLUSIVE means required input or evidence is insufficient", prompt)
+        self.assertIn("Never return READY or REVISE", prompt)
+        architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+        self.assertIn("A required `Direction:", architecture)
+        self.assertIn("line for `CONFIRMED` or `REFUTED` remains advisory", architecture)
+
     def test_policy_preserves_unfinished_objectives_across_user_input(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("An unfinished root objective remains active across turns", policy)
@@ -477,8 +553,9 @@ class RemoraTests(unittest.TestCase):
             policy,
         )
         self.assertIn(
-            "use `AskUserQuestion` only if that tool is actually exposed", policy
+            "must call `AskUserQuestion` when that tool is actually exposed", policy
         )
+        self.assertIn("must not replace the call with a plain-text question", policy)
         self.assertTrue(
             "Otherwise end the turn with `PAUSED_NEEDS_USER`" in policy
             and "Headless or noninteractive execution emits that pause and exits" in policy

@@ -804,6 +804,12 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("`&`, `nohup`, or `disown`", policy)
         self.assertIn("instead of silently running the command in the foreground", policy)
 
+        for name in ("mech-executor", "executor", "verifier", "security-executor"):
+            with self.subTest(name=name):
+                prompt = agents[name]["prompt"]
+                self.assertIn("Never start or detach a long-running command", prompt)
+                self.assertIn("execution tool's native background mode", prompt)
+
     def test_policy_preserves_positive_delegation_paths(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("choose by net benefit", policy)

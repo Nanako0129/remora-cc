@@ -105,7 +105,7 @@ Runtime behavior and reference documents:
 | Caller settings | Recursively merged; remora-owned keys remain authoritative | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | `fallbackModel: []`; CLI `--fallback-model` is rejected | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` composes caller then remora policy | [Role policy](./docs/architecture.md#role-policy) |
-| Context and Calico | Fails closed on stale or inconsistent metadata | [Gateway semantics](./docs/architecture.md#gateway-semantics) |
+| Context and Calico | Fails closed on stale or inconsistent metadata | [CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment) |
 | Compact hardening | remora marks `REMORA_ACTIVE` only; Calico body policy + gateway class guard | [Compact request hardening](./docs/cliproxyapi.md#compact-request-hardening-calico--gateway) |
 | Active-turn bridge | Experimental and topology-limited | [Gateway runbook](./docs/cliproxyapi.md#experimental-active-turn-bridge) |
 
@@ -195,6 +195,16 @@ The environment variable wins when present. Otherwise remora executes the
 credential command directly without a shell. Existing pre-eight-role configs
 remain compatible; use [`config.example.toml`](./config.example.toml) to add
 independent Plan and security reviewer routing.
+
+### GPT-5.6 family context discovery
+
+In `calico` mode, Remora reads gateway and fresh Codex model metadata without
+writing native Codex or CLIProxyAPI configuration. For the exact GPT-5.6 family
+slugs it prefers a valid `max_context_window`, safely falls back to existing
+context fields, takes the smaller gateway/runtime value, and derives the 90%
+compact trigger. When both sources advertise 921,000, all three compact at
+828,900. See the
+[CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment).
 
 ## Use
 

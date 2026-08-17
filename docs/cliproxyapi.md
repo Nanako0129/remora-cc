@@ -206,7 +206,13 @@ remora dry-run
 
 ## Context-window alignment
 
-Do not copy the public OpenAI API context number into CLIProxyAPI metadata. The public GPT-5.6 API documents 1.05M, while CLIProxyAPI currently reports 372K for the Codex OAuth route. That gateway value is only one ceiling: an authoritative Codex runtime-catalog hot update changed Sol, Terra, and Luna to 272K on 2026-07-13.
+Do not copy the public OpenAI API context number into CLIProxyAPI metadata. The
+official [GPT-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol),
+[GPT-5.6-terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), and
+[GPT-5.6-luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) docs
+each state 1,050,000 total context and 128,000 maximum output. In the live
+CLIProxyAPI catalog on 2026-08-17, all three returned `context_window: 272000`,
+`max_context_window: 921000`, and `auto_compact_token_limit: null`.
 
 Stock CLIProxyAPI exposes that value without any server modification:
 
@@ -214,22 +220,55 @@ Stock CLIProxyAPI exposes that value without any server modification:
 curl -fsS \
   -H "Authorization: Bearer $REMORA_AUTH_TOKEN" \
   'http://127.0.0.1:8317/v1/models?client_version=remora' \
-  | jq '.models[] | select(.slug | startswith("gpt-5.6-")) | {slug, context_window}'
+  | jq '.models[] | select(.slug | test("^gpt-5\\.6-(sol|terra|luna)$")) | {slug, context_window, max_context_window, auto_compact_token_limit}'
 ```
 
-remora performs the lookup read-only, but its safe default follows stock Claude Code's 200K limit for unknown custom model ids. In `stock` mode it does not inject context or compact overrides; Claude's native output reserve and precompute policy remain authoritative. CLIProxyAPI needs no change or restart.
+Direct `/v1/responses` probes through the Codex OAuth upstream for each slug
+accepted reported `usage.input_tokens=921,858`; the adjacent `921,859` returned
+`invalid_request_error` with code `context_too_large`. Payload calibration
+measured fixed 302-token translated overhead, so repeated-input counts were
+921,556 versus 921,557. On Luna, `max_output_tokens` values 16, 17, 128, 1000,
+and 128000 all accepted at reported input 921,858, so that parameter did not
+move the observed boundary. The official 1.05M total and 128K maximum-output
+facts are consistent context, but do not independently establish this exact
+OAuth input boundary.
 
-The optional `calico` mode requires a verified Calico Claude binary. It takes the smaller value from the gateway catalog and a fresh local Codex runtime cache for every configured model, then passes that exact map into Calico's dormant adapter. The current 272K client window gives status-line consumers 258.4K usable context and begins compaction at 244.8K. A missing, older-than-five-minutes, or incomplete Codex cache falls back to 272K. A later fresh 372K runtime catalog restores 372K automatically. remora refuses to launch this mode if the binary does not contain the adapter marker.
+| Evidence | All three exact GPT-5.6 slugs |
+|---|---:|
+| Official total context | 1,050,000 |
+| Largest accepted OAuth input | 921,858 |
+| First rejected OAuth input | 921,859 |
+| CLIProxyAPI `max_context_window` (2026-08-17) | 921,000 |
+| Fresh Codex cache `max_context_window` (2026-08-17 08:41 UTC) | 872,000 |
+
+Remora reads this metadata read-only; it never writes native Codex or
+CLIProxyAPI configuration. In `calico` mode, `max_context_window` is considered
+only for the exact `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` slugs. It
+must be a positive non-bool integer; missing, null, boolean, string, zero, or
+negative values fall back to the existing `context_window` (and gateway
+`context_length`) fields. Other slugs keep their existing field semantics.
+
+Remora compares the gateway value with fresh Codex `models_cache` metadata for
+each configured model and uses the smaller value. With a 921,000 client window,
+the configured 90% compact ratio produces an 828,900 trigger. A missing, stale,
+or incomplete cache uses the configured fallback window instead. CLIProxyAPI
+needs no context YAML edit or restart.
+
+remora's safe default follows stock Claude Code's 200K limit for unknown custom
+model ids. In `stock` mode it does not inject context or compact overrides;
+Claude's native output reserve and precompute policy remain authoritative.
+
+The optional `calico` mode requires a verified Calico Claude binary. It takes the smaller value from the gateway catalog and a fresh local Codex runtime cache for every configured model, then passes that exact map into Calico's dormant adapter. If both sources advertise 921K, the resulting client window is 921K, effective context is 874.95K, and the compact trigger is 828.9K. If the fresh cache advertises 872K, discovery intentionally caps the client at 872K. A missing, older-than-five-minutes, or incomplete Codex cache uses the configured fallback, which defaults to 272K. remora refuses to launch this mode if the binary does not contain the adapter marker. The discovered window is separate from OAuth entitlement and does not change remora's `[context].auto_compact_percent` behavior.
 
 | Source | Meaning |
 |---|---|
-| Gateway `context_window` | Gateway-advertised ceiling; retained for diagnostics |
-| Fresh `~/.codex/models_cache.json` | Authoritative Codex runtime ceiling; read-only, metadata only |
+| Gateway model metadata | `max_context_window` for the exact GPT-5.6 family; existing `context_window`/`context_length` otherwise |
+| Fresh Codex `models_cache` metadata | Authoritative Codex runtime ceiling; read-only, metadata only |
 | `[context].mode = "stock"` | Stock-safe 200K client behavior; default |
 | `[context].mode = "calico"` | Explicit opt-in to the verified custom-context adapter |
 | `[context].stock_window` | Stock Claude Code custom-model window, normally 200K |
 | `[context].fallback_window` | Conservative value used when catalog lookup is unavailable or incomplete |
-| `[context].codex_fallback_window` | Safe Codex ceiling when its runtime cache cannot be trusted; currently 272K |
+| `[context].codex_fallback_window` | Safe Codex ceiling when its runtime cache cannot be trusted; defaults to 272K |
 | `[context].codex_cache_ttl_seconds` | Freshness limit for the Codex runtime cache; matches Codex's 300-second TTL |
 | `[context].codex_models_cache` | Optional path override; otherwise uses `$CODEX_HOME/models_cache.json` or `~/.codex/models_cache.json` |
 | `[context].effective_window_percent` | Diagnostic effective-input ratio; Codex defaults to 95% |

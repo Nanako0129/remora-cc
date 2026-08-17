@@ -101,7 +101,7 @@ Runtime 行為與參考文件：
 | Caller settings | 遞迴合併；remora-owned keys 保持 authoritative | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | 注入 `fallbackModel: []`；拒絕 CLI `--fallback-model` | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` 依序合成 caller 與 remora policy | [Role policy](./docs/architecture.md#role-policy) |
-| Context 與 Calico | Metadata 過期或不一致時 fail closed | [Gateway semantics](./docs/architecture.md#gateway-semantics) |
+| Context 與 Calico | Metadata 過期或不一致時 fail closed | [CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊) |
 | Compact 硬化 | remora 只標 `REMORA_ACTIVE`；body 歸 Calico、class guard 歸 gateway | [Compact 請求硬化](./docs/cliproxyapi.zh-TW.md#compact-請求硬化calico--gateway) |
 | Active-turn bridge | 實驗性功能，只支援有限 topology | [Gateway runbook](./docs/cliproxyapi.zh-TW.md#實驗性-active-turn-bridge) |
 
@@ -188,6 +188,15 @@ auth_token_command = [
 環境變數存在時優先；否則 remora 不經 shell，直接執行 credential command。
 八角色版本之前建立的設定仍可使用；需要獨立控制 Plan 與 security reviewer
 時，依 [`config.example.toml`](./config.example.toml) 補上欄位。
+
+### CLIProxyAPI 上的 GPT-5.6 family context discovery
+
+在 `calico` 模式，Remora 只讀 gateway 與新鮮的 Codex model metadata，不會寫入
+原生 Codex 或 CLIProxyAPI 設定。對精確的 GPT-5.6 family slug，優先採用有效的
+`max_context_window`，無效時安全回退到既有 context 欄位，再取 gateway／runtime
+較小值並推導 90% compact trigger。兩個來源都宣告 921,000 時，三者都會在
+828,900 compact。詳見
+[CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊)。
 
 ## 使用
 

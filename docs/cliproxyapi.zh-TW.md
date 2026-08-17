@@ -190,7 +190,7 @@ export REMORA_AUTH_TOKEN='REPLACE_WITH_PROXY_API_KEY'
 remora doctor --online
 ```
 
-長期使用應改從 macOS Keychain 或其他 OS credential store 讀取，避免把 key 寫入 TOML、shell profile 或 repository。
+長期使用應改從 macOS Keychain 或其他 OS credential store 讀取，避免把 key 寫入 TOML、shell environment 或 repository。
 
 ## 模型設定
 
@@ -211,7 +211,13 @@ remora dry-run
 
 ## Context window 對齊
 
-不要把 OpenAI 公開 API 的 context 數字直接覆寫進 CLIProxyAPI metadata。公開 GPT-5.6 API 標示 1.05M，CLIProxyAPI 對 Codex OAuth route 目前則回報 372K。但 gateway 只是其中一層 ceiling；權威的 Codex runtime-catalog hot update 已在 2026-07-13 把 Sol、Terra、Luna 改成 272K。
+不要把 OpenAI 公開 API 的 context 數字直接覆寫進 CLIProxyAPI metadata。
+官方 [GPT-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、
+[GPT-5.6-terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、
+[GPT-5.6-luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) 文件
+都標示 total context 1,050,000、maximum output 128,000。2026-08-17 的 live
+CLIProxyAPI catalog 中，三者都回傳 `context_window: 272000`、
+`max_context_window: 921000`、`auto_compact_token_limit: null`。
 
 Stock CLIProxyAPI 不需修改即可唯讀取得該值：
 
@@ -219,22 +225,53 @@ Stock CLIProxyAPI 不需修改即可唯讀取得該值：
 curl -fsS \
   -H "Authorization: Bearer $REMORA_AUTH_TOKEN" \
   'http://127.0.0.1:8317/v1/models?client_version=remora' \
-  | jq '.models[] | select(.slug | startswith("gpt-5.6-")) | {slug, context_window}'
+  | jq '.models[] | select(.slug | test("^gpt-5\\.6-(sol|terra|luna)$")) | {slug, context_window, max_context_window, auto_compact_token_limit}'
 ```
 
-remora 會做同一個唯讀查詢，但安全預設遵循原生 Claude Code 對未知 custom model id 的 200K 上限。`stock` 模式不注入 context 或 compact override；Claude 原生的 output reserve 與 precompute policy 維持權威。CLIProxyAPI 不需要修改或重啟。
+三個 slug 各自透過 Codex OAuth upstream 的直接 `/v1/responses` probe 都接受
+回報的 `usage.input_tokens=921,858`；緊鄰的 `921,859` 回傳
+`invalid_request_error`、code `context_too_large`。Payload calibration 測得
+固定 302-token translation overhead，因此 repeated-input count 是 921,556
+對 921,557。Luna 在回報 input 921,858 時，`max_output_tokens` 為 16、17、
+128、1000、128000 都接受，因此該參數沒有移動觀察到的邊界。官方 1.05M
+total 與 128K maximum output 是相符的背景事實，但不能單獨建立這個精確
+OAuth input boundary。
 
-可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會針對每個已設定模型比較 gateway catalog 與新鮮的本機 Codex runtime cache，採用較小值後再把精確 map 交給 Calico 預設休眠的 adapter。目前 272K client window 會讓 statusline consumer 看到 258.4K usable context，並在 244.8K compact。Codex cache 不存在、超過五分鐘或不完整時，安全 fallback 也是 272K；若之後新鮮的 runtime catalog 回到 372K，remora 會自動恢復 372K。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。
+| 證據 | 三個精確 GPT-5.6 slug |
+|---|---:|
+| 官方 total context | 1,050,000 |
+| OAuth 最大可接受 input | 921,858 |
+| OAuth 第一個拒絕的 input | 921,859 |
+| CLIProxyAPI `max_context_window`（2026-08-17） | 921,000 |
+| 新鮮 Codex cache `max_context_window`（2026-08-17 08:41 UTC） | 872,000 |
+
+remora 只讀取這些 metadata；永遠不會寫入原生 Codex 或 CLIProxyAPI 設定。
+在 `calico` 模式，只有精確的 `gpt-5.6-sol`、`gpt-5.6-terra`、
+`gpt-5.6-luna` slug 才會使用 `max_context_window`。它必須是正的非 bool
+整數；缺少、null、boolean、string、零或負值，都會安全回退到既有的
+`context_window`（gateway 也支援 `context_length`）欄位。其他 slug 維持既有
+欄位語意。
+
+remora 會針對每個已設定模型比較 gateway 值與新鮮的 Codex `models_cache`
+metadata，採用較小值。client window 為 921,000 時，設定的 90% compact ratio
+會推導出 828,900 trigger。cache 不存在、過期或不完整時，使用設定的 fallback
+window。CLIProxyAPI 不需要修改 context YAML 或重啟。
+
+安全預設遵循原生 Claude Code 對未知 custom model id 的 200K 上限。`stock` 模式
+不注入 context 或 compact override；Claude 原生的 output reserve 與 precompute
+policy 維持權威。
+
+可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會針對每個已設定模型比較 gateway catalog 與新鮮的本機 Codex runtime cache，採用較小值後再把精確 map 交給 Calico 預設休眠的 adapter。兩個來源都宣告 921K 時，client window 為 921K、effective context 為 874.95K，並在 828.9K compact；若新鮮 cache 宣告 872K，discovery 會刻意把 client cap 在 872K。Codex cache 不存在、超過五分鐘或不完整時，使用設定的 fallback，預設為 272K。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。這個 discovered window 與 OAuth entitlement 分開，不會改變 remora 採用的 `[context].auto_compact_percent` 行為。
 
 | 來源 | 意義 |
 |---|---|
-| Gateway `context_window` | Gateway 宣告的 ceiling；保留供診斷 |
-| 新鮮的 `~/.codex/models_cache.json` | 權威 Codex runtime ceiling；唯讀且只有 metadata |
+| Gateway model metadata | 精確 GPT-5.6 family 使用 `max_context_window`；其他情況使用既有 `context_window`／`context_length` |
+| 新鮮的 Codex `models_cache` metadata | 權威 Codex runtime ceiling；唯讀且只有 metadata |
 | `[context].mode = "stock"` | 原生安全的 200K client 行為；預設值 |
 | `[context].mode = "calico"` | 明確選用已驗證的 custom-context adapter |
 | `[context].stock_window` | 原生 Claude Code 的 custom-model window，通常是 200K |
 | `[context].fallback_window` | Catalog 查不到或不完整時的保守值 |
-| `[context].codex_fallback_window` | Runtime cache 不可信時的安全 Codex ceiling；目前為 272K |
+| `[context].codex_fallback_window` | Runtime cache 不可信時的安全 Codex ceiling；預設為 272K |
 | `[context].codex_cache_ttl_seconds` | Codex runtime cache 的 freshness 上限；對齊 Codex 的 300 秒 TTL |
 | `[context].codex_models_cache` | 可選的路徑 override；否則使用 `$CODEX_HOME/models_cache.json` 或 `~/.codex/models_cache.json` |
 | `[context].effective_window_percent` | 診斷用 effective-input 比例；Codex 預設 95% |

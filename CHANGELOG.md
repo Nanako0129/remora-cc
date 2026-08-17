@@ -2,6 +2,21 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.21 - 2026-08-17
+
+Merged PR #24: gateway and fresh Codex-cache metadata readers for
+`gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` now prefer a valid positive,
+non-bool `max_context_window`. Missing or invalid values fall back to the
+existing `context_window`, or gateway `context_length`; other model families
+are unchanged.
+
+Smaller-source selection, cache freshness, warnings, configured fallback, and
+the read-only boundary toward native Codex and CLIProxyAPI are preserved.
+Measured boundaries/snapshots are: input `921858` accepted, input `921859`
+rejected; gateway max snapshot `921000`; fresh cache snapshot `872000`; with
+both sources at `921000`, compact is `828900`. These figures are not
+entitlement or universal current metadata.
+
 ## 0.1.20 - 2026-08-09
 
 Require every eligible delegation to use Claude Code's background mode,

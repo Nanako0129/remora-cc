@@ -130,9 +130,8 @@ https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.22/install/AGENT-INS
 ```
 
 Runbook 會停在 approval gate，驗證 SHA-256 與 GitHub artifact
-attestation、原子化安裝並檢查原生 Claude 隔離；若原生狀態有其他程式並行
-寫入，會與 Remora-owned 路徑的判定分開處理。它不會要求 bearer token 或
-OAuth 檔案。
+attestation，原子化安裝，並確認 `~/.claude` 沒有改變。它不會要求 bearer
+token 或 OAuth 檔案。
 
 ### 手動 source install
 

@@ -135,9 +135,8 @@ anything until I explicitly approve.
 ```
 
 The runbook stops for approval, verifies SHA-256 and GitHub artifact
-attestation, installs atomically, checks native Claude isolation, and treats
-concurrent native-state activity separately from Remora-owned path checks. It
-never asks for a bearer token or OAuth file.
+attestation, installs atomically, and confirms that `~/.claude` did not change.
+It never asks for a bearer token or OAuth file.
 
 ### Manual source install
 

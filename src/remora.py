@@ -38,6 +38,9 @@ DEFAULT_CODEX_CONTEXT_WINDOW = 272_000
 DEFAULT_CODEX_CACHE_TTL_SECONDS = 300
 DEFAULT_EFFECTIVE_CONTEXT_PERCENT = 95
 DEFAULT_AUTO_COMPACT_PERCENT = 90
+GPT56_LONG_CONTEXT_SLUGS = frozenset(
+    {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
+)
 AUTO_COMPACT_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 AUTO_COMPACT_PERCENT_ENV = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
 CLAUDE_EXTRA_BODY_ENV = "CLAUDE_CODE_EXTRA_BODY"
@@ -324,6 +327,24 @@ def routing_settings(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def select_model_context_window(row: dict[str, Any], *legacy_fields: str) -> int | None:
+    name = str(row.get("slug") or row.get("id") or "").strip()
+    if name in GPT56_LONG_CONTEXT_SLUGS:
+        fields = ("max_context_window", *legacy_fields)
+        for field in fields:
+            value = row.get(field)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+        return None
+
+    value = (
+        row.get(legacy_fields[0], row.get(legacy_fields[1]))
+        if len(legacy_fields) > 1
+        else row.get(legacy_fields[0])
+    )
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
 def fetch_gateway_context_windows(config: dict[str, Any], token: str) -> dict[str, int]:
     base_url = str(config["proxy"]["base_url"]).rstrip("/")
     query = urllib.parse.urlencode({"client_version": f"remora-{VERSION}"})
@@ -343,8 +364,8 @@ def fetch_gateway_context_windows(config: dict[str, Any], token: str) -> dict[st
         if not isinstance(row, dict):
             continue
         name = str(row.get("slug") or row.get("id") or "").strip()
-        value = row.get("context_window", row.get("context_length"))
-        if name and isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        value = select_model_context_window(row, "context_window", "context_length")
+        if name and value is not None:
             windows[name] = value
     return windows
 
@@ -401,8 +422,8 @@ def fetch_codex_context_windows(config: dict[str, Any]) -> dict[str, int]:
         if not isinstance(row, dict):
             continue
         name = str(row.get("slug") or row.get("id") or "").strip()
-        value = row.get("context_window")
-        if name and isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        value = select_model_context_window(row, "context_window")
+        if name and value is not None:
             windows[name] = value
     return windows
 

@@ -189,31 +189,14 @@ auth_token_command = [
 八角色版本之前建立的設定仍可使用；需要獨立控制 Plan 與 security reviewer
 時，依 [`config.example.toml`](./config.example.toml) 補上欄位。
 
-### CLIProxyAPI 上的 GPT-5.6 family 長 context
+### CLIProxyAPI 上的 GPT-5.6 family context discovery
 
-原生 Codex CLI 透過 CLIProxyAPI Codex OAuth route 時，在
-`~/.codex/config.toml` 加入：
-
-```toml
-model = "gpt-5.6-sol" # Or gpt-5.6-terra / gpt-5.6-luna.
-model_context_window = 921000
-model_auto_compact_token_limit = 828900
-# Optional；`total` 是預設值。
-model_auto_compact_token_limit_scope = "total"
-```
-
-| Profile 檔案 | Model | 啟動方式 |
-| --- | --- | --- |
-| `$CODEX_HOME/sol.config.toml` | `gpt-5.6-sol` | `codex --profile sol` |
-| `$CODEX_HOME/terra.config.toml` | `gpt-5.6-terra` | `codex --profile terra` |
-| `$CODEX_HOME/luna.config.toml` | `gpt-5.6-luna` | `codex --profile luna` |
-
-每個 profile 都包含上方相同的三個 context／compact keys，並固定該列的 model。
-
-三個 GPT-5.6 slug 都接受回報的 `input_tokens=921,858`；緊鄰的 `921,859`
-被拒絕。這只改變原生 Codex client accounting 與 auto-compaction，不改變
-OAuth entitlement 或 gateway 設定。CLIProxyAPI 不需要修改 context YAML 或
-重啟。詳見 [CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊)。
+在 `calico` 模式，Remora 只讀 gateway 與新鮮的 Codex model metadata，不會寫入
+原生 Codex 或 CLIProxyAPI 設定。對精確的 GPT-5.6 family slug，優先採用有效的
+`max_context_window`，無效時安全回退到既有 context 欄位，再取 gateway／runtime
+較小值並推導 90% compact trigger。兩個來源都宣告 921,000 時，三者都會在
+828,900 compact。詳見
+[CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊)。
 
 ## 使用
 

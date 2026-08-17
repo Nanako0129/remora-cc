@@ -196,32 +196,14 @@ credential command directly without a shell. Existing pre-eight-role configs
 remain compatible; use [`config.example.toml`](./config.example.toml) to add
 independent Plan and security reviewer routing.
 
-### GPT-5.6 family long context through CLIProxyAPI
+### GPT-5.6 family context discovery
 
-For native Codex CLI sessions using the CLIProxyAPI Codex OAuth route, add this
-to `~/.codex/config.toml`:
-
-```toml
-model = "gpt-5.6-sol" # Or gpt-5.6-terra / gpt-5.6-luna.
-model_context_window = 921000
-model_auto_compact_token_limit = 828900
-# Optional; `total` is the default.
-model_auto_compact_token_limit_scope = "total"
-```
-
-| Profile file | Model | Run with |
-| --- | --- | --- |
-| `$CODEX_HOME/sol.config.toml` | `gpt-5.6-sol` | `codex --profile sol` |
-| `$CODEX_HOME/terra.config.toml` | `gpt-5.6-terra` | `codex --profile terra` |
-| `$CODEX_HOME/luna.config.toml` | `gpt-5.6-luna` | `codex --profile luna` |
-
-Each profile contains the same three context/compact keys shown above, with its
-row's model pinned.
-
-All three GPT-5.6 slugs accepted reported `input_tokens=921,858`; the adjacent
-`921,859` was rejected. This changes native Codex client accounting and
-auto-compaction only, not OAuth entitlement or gateway configuration. CLIProxyAPI
-needs no YAML context edit or restart. See the
+In `calico` mode, Remora reads gateway and fresh Codex model metadata without
+writing native Codex or CLIProxyAPI configuration. For the exact GPT-5.6 family
+slugs it prefers a valid `max_context_window`, safely falls back to existing
+context fields, takes the smaller gateway/runtime value, and derives the 90%
+compact trigger. When both sources advertise 921,000, all three compact at
+828,900. See the
 [CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment).
 
 ## Use

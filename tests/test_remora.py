@@ -1803,7 +1803,7 @@ class RemoraTests(unittest.TestCase):
         config = json.loads(json.dumps(self.config))
         config["context"]["mode"] = "calico"
         restored_windows = {
-            name: 372000 for name in remora.configured_model_names(config)
+            name: 921000 for name in remora.configured_model_names(config)
         }
         with (
             mock.patch.object(
@@ -1820,12 +1820,78 @@ class RemoraTests(unittest.TestCase):
             policy = remora.resolve_context_policy(
                 config, token="hidden", online=True
             )
-        self.assertEqual(policy["provider_window"], 372000)
-        self.assertEqual(policy["codex_window"], 372000)
-        self.assertEqual(policy["client_window"], 372000)
-        self.assertEqual(policy["effective_window"], 353400)
-        self.assertEqual(policy["compact_trigger"], 334800)
+        self.assertEqual(policy["provider_window"], 921000)
+        self.assertEqual(policy["codex_window"], 921000)
+        self.assertEqual(policy["client_window"], 921000)
+        self.assertEqual(policy["model_windows"], restored_windows)
+        self.assertEqual(policy["effective_window"], 874950)
+        self.assertEqual(policy["compact_trigger"], 828900)
         self.assertNotIn("capped to the Codex value", policy["warning"])
+
+    def test_context_metadata_prefers_gpt56_max_window_and_falls_back_safely(self) -> None:
+        family = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+        def gateway(rows: list[dict[str, object]]) -> dict[str, int]:
+            response = io.StringIO(json.dumps({"models": rows}))
+            with mock.patch.object(
+                remora.urllib.request, "urlopen", return_value=response
+            ):
+                return remora.fetch_gateway_context_windows(self.config, "hidden")
+
+        def cache(rows: list[dict[str, object]]) -> dict[str, int]:
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "models_cache.json"
+                path.write_text(
+                    json.dumps(
+                        {
+                            "fetched_at": remora.datetime.now(
+                                remora.timezone.utc
+                            ).isoformat(),
+                            "models": rows,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                config = json.loads(json.dumps(self.config))
+                config["context"]["codex_models_cache"] = str(path)
+                return remora.fetch_codex_context_windows(config)
+
+        rows = [
+            {"slug": name, "max_context_window": 921000, "context_window": 272000}
+            for name in family
+        ]
+        self.assertEqual(gateway(rows), dict.fromkeys(family, 921000))
+        self.assertEqual(cache(rows), dict.fromkeys(family, 921000))
+
+        for invalid in (None, True, "921000", 0, -1):
+            rows = [
+                {
+                    "slug": name,
+                    "max_context_window": invalid,
+                    "context_window": 272000,
+                }
+                for name in family
+            ]
+            self.assertEqual(gateway(rows), dict.fromkeys(family, 272000))
+            self.assertEqual(cache(rows), dict.fromkeys(family, 272000))
+
+        missing_max = [{"slug": name, "context_window": 272000} for name in family]
+        self.assertEqual(gateway(missing_max), dict.fromkeys(family, 272000))
+        self.assertEqual(cache(missing_max), dict.fromkeys(family, 272000))
+
+        context_length_only = [
+            {"slug": name, "context_length": 372000} for name in family
+        ]
+        self.assertEqual(gateway(context_length_only), dict.fromkeys(family, 372000))
+
+        rows = [
+            {
+                "slug": "other-model",
+                "max_context_window": 921000,
+                "context_window": 272000,
+            }
+        ]
+        self.assertEqual(gateway(rows), {"other-model": 272000})
+        self.assertEqual(cache(rows), {"other-model": 272000})
 
     def test_codex_context_cache_loader_rejects_stale_metadata(self) -> None:
         config = json.loads(json.dumps(self.config))

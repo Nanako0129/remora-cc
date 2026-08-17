@@ -211,7 +211,13 @@ remora dry-run
 
 ## Context window 對齊
 
-不要把 OpenAI 公開 API 的 context 數字直接覆寫進 CLIProxyAPI metadata。公開 GPT-5.6 API 標示 1.05M，CLIProxyAPI 對 Codex OAuth route 目前則回報 372K。但 gateway 只是其中一層 ceiling；權威的 Codex runtime-catalog hot update 已在 2026-07-13 把 Sol、Terra、Luna 改成 272K。
+不要把 OpenAI 公開 API 的 context 數字直接覆寫進 CLIProxyAPI metadata。
+官方 [GPT-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、
+[GPT-5.6-terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、
+[GPT-5.6-luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) 文件
+都標示 total context 1,050,000、maximum output 128,000。2026-08-17 的 live
+CLIProxyAPI catalog 中，三者都回傳 `context_window: 272000`、
+`max_context_window: 921000`、`auto_compact_token_limit: null`。
 
 Stock CLIProxyAPI 不需修改即可唯讀取得該值：
 
@@ -219,12 +225,55 @@ Stock CLIProxyAPI 不需修改即可唯讀取得該值：
 curl -fsS \
   -H "Authorization: Bearer $REMORA_AUTH_TOKEN" \
   'http://127.0.0.1:8317/v1/models?client_version=remora' \
-  | jq '.models[] | select(.slug | startswith("gpt-5.6-")) | {slug, context_window}'
+  | jq '.models[] | select(.slug | test("^gpt-5\\.6-(sol|terra|luna)$")) | {slug, context_window, max_context_window, auto_compact_token_limit}'
+```
+
+三個 slug 各自透過 Codex OAuth upstream 的直接 `/v1/responses` probe 都接受
+回報的 `usage.input_tokens=921,858`；緊鄰的 `921,859` 回傳
+`invalid_request_error`、code `context_too_large`。Payload calibration 測得
+固定 302-token translation overhead，因此 repeated-input count 是 921,556
+對 921,557。Luna 在回報 input 921,858 時，`max_output_tokens` 為 16、17、
+128、1000、128000 都接受，因此該參數沒有移動觀察到的邊界。官方 1.05M
+total 與 128K maximum output 是相符的背景事實，但不能單獨建立這個精確
+OAuth input boundary。
+
+原生 Codex CLI 可在 `~/.codex/config.toml` 使用安全的 client accounting：
+
+```toml
+model = "gpt-5.6-sol" # Or gpt-5.6-terra / gpt-5.6-luna.
+model_context_window = 921000
+model_auto_compact_token_limit = 828900
+# Optional；`total` 是預設值。
+model_auto_compact_token_limit_scope = "total"
+```
+
+828,900 limit 是 921,000 的 90%。這些是原生 Codex CLI 設定，與
+remora／Calico accounting 分開；不會提高 OAuth entitlement 或 gateway 設定。
+CLIProxyAPI 不需要修改 context YAML 或重啟。
+
+[Codex config reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+定義 profile 位於 `$CODEX_HOME/<name>.config.toml`，並以
+`codex --profile <name>` 選用。每個 profile 都保留相同的 context 與 compact
+keys：
+
+| Profile 檔案 | Model | 啟動方式 |
+| --- | --- | --- |
+| `$CODEX_HOME/sol.config.toml` | `gpt-5.6-sol` | `codex --profile sol` |
+| `$CODEX_HOME/terra.config.toml` | `gpt-5.6-terra` | `codex --profile terra` |
+| `$CODEX_HOME/luna.config.toml` | `gpt-5.6-luna` | `codex --profile luna` |
+
+可重用的 profile template（明確設定該列 model）：
+
+```toml
+model = "gpt-5.6-sol"
+model_context_window = 921000
+model_auto_compact_token_limit = 828900
+model_auto_compact_token_limit_scope = "total"
 ```
 
 remora 會做同一個唯讀查詢，但安全預設遵循原生 Claude Code 對未知 custom model id 的 200K 上限。`stock` 模式不注入 context 或 compact override；Claude 原生的 output reserve 與 precompute policy 維持權威。CLIProxyAPI 不需要修改或重啟。
 
-可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會針對每個已設定模型比較 gateway catalog 與新鮮的本機 Codex runtime cache，採用較小值後再把精確 map 交給 Calico 預設休眠的 adapter。目前 272K client window 會讓 statusline consumer 看到 258.4K usable context，並在 244.8K compact。Codex cache 不存在、超過五分鐘或不完整時，安全 fallback 也是 272K；若之後新鮮的 runtime catalog 回到 372K，remora 會自動恢復 372K。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。
+可選的 `calico` 模式必須搭配通過驗證的 Calico Claude binary。remora 會針對每個已設定模型比較 gateway catalog 與新鮮的本機 Codex runtime cache，採用較小值後再把精確 map 交給 Calico 預設休眠的 adapter。目前 272K client window 會讓 statusline consumer 看到 258.4K usable context，並在 244.8K compact。Codex cache 不存在、超過五分鐘或不完整時，安全 fallback 也是 272K。Binary 沒有 adapter marker 時，remora 會拒絕啟動該模式。上述原生 Codex CLI 設定彼此分開，不會改變 remora 採用較小 `context_window` 或 `[context].auto_compact_percent` 的行為。
 
 | 來源 | 意義 |
 |---|---|

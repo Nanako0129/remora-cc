@@ -105,7 +105,7 @@ Runtime behavior and reference documents:
 | Caller settings | Recursively merged; remora-owned keys remain authoritative | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | `fallbackModel: []`; CLI `--fallback-model` is rejected | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` composes caller then remora policy | [Role policy](./docs/architecture.md#role-policy) |
-| Context and Calico | Fails closed on stale or inconsistent metadata | [Gateway semantics](./docs/architecture.md#gateway-semantics) |
+| Context and Calico | Fails closed on stale or inconsistent metadata | [CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment) |
 | Compact hardening | remora marks `REMORA_ACTIVE` only; Calico body policy + gateway class guard | [Compact request hardening](./docs/cliproxyapi.md#compact-request-hardening-calico--gateway) |
 | Active-turn bridge | Experimental and topology-limited | [Gateway runbook](./docs/cliproxyapi.md#experimental-active-turn-bridge) |
 
@@ -195,6 +195,34 @@ The environment variable wins when present. Otherwise remora executes the
 credential command directly without a shell. Existing pre-eight-role configs
 remain compatible; use [`config.example.toml`](./config.example.toml) to add
 independent Plan and security reviewer routing.
+
+### GPT-5.6 family long context through CLIProxyAPI
+
+For native Codex CLI sessions using the CLIProxyAPI Codex OAuth route, add this
+to `~/.codex/config.toml`:
+
+```toml
+model = "gpt-5.6-sol" # Or gpt-5.6-terra / gpt-5.6-luna.
+model_context_window = 921000
+model_auto_compact_token_limit = 828900
+# Optional; `total` is the default.
+model_auto_compact_token_limit_scope = "total"
+```
+
+| Profile file | Model | Run with |
+| --- | --- | --- |
+| `$CODEX_HOME/sol.config.toml` | `gpt-5.6-sol` | `codex --profile sol` |
+| `$CODEX_HOME/terra.config.toml` | `gpt-5.6-terra` | `codex --profile terra` |
+| `$CODEX_HOME/luna.config.toml` | `gpt-5.6-luna` | `codex --profile luna` |
+
+Each profile contains the same three context/compact keys shown above, with its
+row's model pinned.
+
+All three GPT-5.6 slugs accepted reported `input_tokens=921,858`; the adjacent
+`921,859` was rejected. This changes native Codex client accounting and
+auto-compaction only, not OAuth entitlement or gateway configuration. CLIProxyAPI
+needs no YAML context edit or restart. See the
+[CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment).
 
 ## Use
 

@@ -101,7 +101,7 @@ Runtime 行為與參考文件：
 | Caller settings | 遞迴合併；remora-owned keys 保持 authoritative | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | 注入 `fallbackModel: []`；拒絕 CLI `--fallback-model` | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` 依序合成 caller 與 remora policy | [Role policy](./docs/architecture.md#role-policy) |
-| Context 與 Calico | Metadata 過期或不一致時 fail closed | [Gateway semantics](./docs/architecture.md#gateway-semantics) |
+| Context 與 Calico | Metadata 過期或不一致時 fail closed | [CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊) |
 | Compact 硬化 | remora 只標 `REMORA_ACTIVE`；body 歸 Calico、class guard 歸 gateway | [Compact 請求硬化](./docs/cliproxyapi.zh-TW.md#compact-請求硬化calico--gateway) |
 | Active-turn bridge | 實驗性功能，只支援有限 topology | [Gateway runbook](./docs/cliproxyapi.zh-TW.md#實驗性-active-turn-bridge) |
 
@@ -188,6 +188,32 @@ auth_token_command = [
 環境變數存在時優先；否則 remora 不經 shell，直接執行 credential command。
 八角色版本之前建立的設定仍可使用；需要獨立控制 Plan 與 security reviewer
 時，依 [`config.example.toml`](./config.example.toml) 補上欄位。
+
+### CLIProxyAPI 上的 GPT-5.6 family 長 context
+
+原生 Codex CLI 透過 CLIProxyAPI Codex OAuth route 時，在
+`~/.codex/config.toml` 加入：
+
+```toml
+model = "gpt-5.6-sol" # Or gpt-5.6-terra / gpt-5.6-luna.
+model_context_window = 921000
+model_auto_compact_token_limit = 828900
+# Optional；`total` 是預設值。
+model_auto_compact_token_limit_scope = "total"
+```
+
+| Profile 檔案 | Model | 啟動方式 |
+| --- | --- | --- |
+| `$CODEX_HOME/sol.config.toml` | `gpt-5.6-sol` | `codex --profile sol` |
+| `$CODEX_HOME/terra.config.toml` | `gpt-5.6-terra` | `codex --profile terra` |
+| `$CODEX_HOME/luna.config.toml` | `gpt-5.6-luna` | `codex --profile luna` |
+
+每個 profile 都包含上方相同的三個 context／compact keys，並固定該列的 model。
+
+三個 GPT-5.6 slug 都接受回報的 `input_tokens=921,858`；緊鄰的 `921,859`
+被拒絕。這只改變原生 Codex client accounting 與 auto-compaction，不改變
+OAuth entitlement 或 gateway 設定。CLIProxyAPI 不需要修改 context YAML 或
+重啟。詳見 [CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊)。
 
 ## 使用
 

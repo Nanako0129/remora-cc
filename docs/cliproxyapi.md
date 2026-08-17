@@ -206,7 +206,13 @@ remora dry-run
 
 ## Context-window alignment
 
-Do not copy the public OpenAI API context number into CLIProxyAPI metadata. The public GPT-5.6 API documents 1.05M, while CLIProxyAPI currently reports 372K for the Codex OAuth route. That gateway value is only one ceiling: an authoritative Codex runtime-catalog hot update changed Sol, Terra, and Luna to 272K on 2026-07-13.
+Do not copy the public OpenAI API context number into CLIProxyAPI metadata. The
+official [GPT-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol),
+[GPT-5.6-terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), and
+[GPT-5.6-luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) docs
+each state 1,050,000 total context and 128,000 maximum output. In the live
+CLIProxyAPI catalog on 2026-08-17, all three returned `context_window: 272000`,
+`max_context_window: 921000`, and `auto_compact_token_limit: null`.
 
 Stock CLIProxyAPI exposes that value without any server modification:
 
@@ -214,12 +220,55 @@ Stock CLIProxyAPI exposes that value without any server modification:
 curl -fsS \
   -H "Authorization: Bearer $REMORA_AUTH_TOKEN" \
   'http://127.0.0.1:8317/v1/models?client_version=remora' \
-  | jq '.models[] | select(.slug | startswith("gpt-5.6-")) | {slug, context_window}'
+  | jq '.models[] | select(.slug | test("^gpt-5\\.6-(sol|terra|luna)$")) | {slug, context_window, max_context_window, auto_compact_token_limit}'
+```
+
+Direct `/v1/responses` probes through the Codex OAuth upstream for each slug
+accepted reported `usage.input_tokens=921,858`; the adjacent `921,859` returned
+`invalid_request_error` with code `context_too_large`. Payload calibration
+measured fixed 302-token translated overhead, so repeated-input counts were
+921,556 versus 921,557. On Luna, `max_output_tokens` values 16, 17, 128, 1000,
+and 128000 all accepted at reported input 921,858, so that parameter did not
+move the observed boundary. The official 1.05M total and 128K maximum-output
+facts are consistent context, but do not independently establish this exact
+OAuth input boundary.
+
+Native Codex CLI can use the safe client accounting in `~/.codex/config.toml`:
+
+```toml
+model = "gpt-5.6-sol" # Or gpt-5.6-terra / gpt-5.6-luna.
+model_context_window = 921000
+model_auto_compact_token_limit = 828900
+# Optional; `total` is the default.
+model_auto_compact_token_limit_scope = "total"
+```
+
+The 828,900 limit is 90% of 921,000. These are native Codex CLI settings,
+separate from remora/Calico accounting; they do not raise OAuth entitlement or
+gateway configuration. CLIProxyAPI needs no context YAML edit or restart.
+
+The [Codex config reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+defines profiles as `$CODEX_HOME/<name>.config.toml`, selected with
+`codex --profile <name>`. Keep the same context and compact keys in each profile:
+
+| Profile file | Model | Run with |
+| --- | --- | --- |
+| `$CODEX_HOME/sol.config.toml` | `gpt-5.6-sol` | `codex --profile sol` |
+| `$CODEX_HOME/terra.config.toml` | `gpt-5.6-terra` | `codex --profile terra` |
+| `$CODEX_HOME/luna.config.toml` | `gpt-5.6-luna` | `codex --profile luna` |
+
+Reusable profile template (set the row's model explicitly):
+
+```toml
+model = "gpt-5.6-sol"
+model_context_window = 921000
+model_auto_compact_token_limit = 828900
+model_auto_compact_token_limit_scope = "total"
 ```
 
 remora performs the lookup read-only, but its safe default follows stock Claude Code's 200K limit for unknown custom model ids. In `stock` mode it does not inject context or compact overrides; Claude's native output reserve and precompute policy remain authoritative. CLIProxyAPI needs no change or restart.
 
-The optional `calico` mode requires a verified Calico Claude binary. It takes the smaller value from the gateway catalog and a fresh local Codex runtime cache for every configured model, then passes that exact map into Calico's dormant adapter. The current 272K client window gives status-line consumers 258.4K usable context and begins compaction at 244.8K. A missing, older-than-five-minutes, or incomplete Codex cache falls back to 272K. A later fresh 372K runtime catalog restores 372K automatically. remora refuses to launch this mode if the binary does not contain the adapter marker.
+The optional `calico` mode requires a verified Calico Claude binary. It takes the smaller value from the gateway catalog and a fresh local Codex runtime cache for every configured model, then passes that exact map into Calico's dormant adapter. The current 272K client window gives status-line consumers 258.4K usable context and begins compaction at 244.8K. A missing, older-than-five-minutes, or incomplete Codex cache falls back to 272K. remora refuses to launch this mode if the binary does not contain the adapter marker. Native Codex CLI settings above are separate and do not change remora's smaller discovered `context_window` or `[context].auto_compact_percent` behavior.
 
 | Source | Meaning |
 |---|---|

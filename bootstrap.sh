@@ -67,9 +67,19 @@ log "Verified SHA-256: $ACTUAL"
 if [ "$ALLOW_CHECKSUM_ONLY" = "1" ]; then
   log "WARNING: proceeding with checksum verification only by explicit override"
 elif command -v gh >/dev/null 2>&1; then
-  gh attestation verify "$TMP/$ARCHIVE" --repo "$REPO" >/dev/null || \
+  SOURCE_DIGEST=$(gh api "repos/$REPO/commits/$TAG" --jq .sha) || \
+    fail "could not resolve the release tag commit"
+  case "$SOURCE_DIGEST" in
+    ''|*[!0-9A-Fa-f]*) fail "GitHub returned an invalid release tag commit" ;;
+  esac
+  [ "${#SOURCE_DIGEST}" -eq 40 ] || fail "GitHub returned an invalid release tag commit"
+  gh attestation verify "$TMP/$ARCHIVE" \
+    --repo "$REPO" \
+    --signer-workflow "$REPO/.github/workflows/release.yml" \
+    --source-ref "refs/tags/$TAG" \
+    --source-digest "$SOURCE_DIGEST" >/dev/null || \
     fail "GitHub artifact attestation verification failed"
-  log "Verified GitHub artifact attestation for $REPO"
+  log "Verified GitHub artifact attestation for $REPO at $TAG ($SOURCE_DIGEST)"
 else
   fail "GitHub CLI is required for provenance verification; install gh or explicitly set REMORA_ALLOW_CHECKSUM_ONLY=1"
 fi

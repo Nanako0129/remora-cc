@@ -2,6 +2,10 @@
 
 All notable changes to remora are documented here.
 
+## 0.1.22 - 2026-08-17
+
+Fix the v0.1.21 maintainer clean-room verification command. The runbook now uses the preflight-selected supported Python interpreter, explicitly contains `REMORA_CONFIG`, `TMPDIR`, and state beneath the temporary root, and splits authoritative isolation gates from the diagnostic real `~/.claude` snapshot so concurrent native writers cannot be attributed to remora. Runtime behavior is unchanged apart from `VERSION`.
+
 ## 0.1.21 - 2026-08-17
 
 Merged PR #24: gateway and fresh Codex-cache metadata readers for

@@ -127,7 +127,7 @@ Give Claude Code this immutable-tag runbook:
 
 ```text
 Read and follow this installation runbook:
-https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.21/install/AGENT-INSTALL.md
+https://raw.githubusercontent.com/Nanako0129/remora-cc/v0.1.22/install/AGENT-INSTALL.md
 
 Perform only the read-only preflight first. Show every proposed filesystem
 change, trust boundary, download source, and verification step. Do not write
@@ -135,13 +135,14 @@ anything until I explicitly approve.
 ```
 
 The runbook stops for approval, verifies SHA-256 and GitHub artifact
-attestation, installs atomically, and confirms that `~/.claude` did not change.
-It never asks for a bearer token or OAuth file.
+attestation, installs atomically, checks native Claude isolation, and treats
+concurrent native-state activity separately from Remora-owned path checks. It
+never asks for a bearer token or OAuth file.
 
 ### Manual source install
 
 ```bash
-git clone --branch v0.1.21 --depth 1 https://github.com/Nanako0129/remora-cc.git
+git clone --branch v0.1.22 --depth 1 https://github.com/Nanako0129/remora-cc.git
 cd remora-cc
 ./install.sh
 ```

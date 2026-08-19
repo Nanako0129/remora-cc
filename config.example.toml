@@ -50,7 +50,7 @@ security-reviewer = "high"
 mech-executor = "medium"
 executor = "max"
 verifier = "high"
-security-executor = "max"
+security-executor = "xhigh"
 
 [runtime]
 claude_binary = "claude"

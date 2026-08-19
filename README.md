@@ -91,7 +91,7 @@ the gateway owns protocol translation, OAuth, retries, cooldown, and billing.
 | `mech-executor` | `gpt-5.6-luna` | medium | Mechanical implementation |
 | `executor` | `gpt-5.6-luna` | max | Judgment-heavy implementation |
 | `verifier` | `gpt-5.6-sol` | high | Adversarial outcome verification |
-| `security-executor` | `gpt-5.6-sol` | max | Approved security implementation |
+| `security-executor` | `gpt-5.6-sol` | xhigh | Approved security implementation |
 
 | Context mode | Claude binary | Client window | Use when |
 | --- | --- | ---: | --- |

@@ -57,6 +57,10 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(agents["executor"]["model"], "gpt-5.6-luna")
         self.assertEqual(agents["executor"]["effort"], "max")
         self.assertEqual(agents["verifier"]["effort"], "high")
+        self.assertEqual(
+            (agents["security-executor"]["model"], agents["security-executor"]["effort"]),
+            ("gpt-5.6-sol", "xhigh"),
+        )
         self.assertIn("Agent", agents["executor"]["disallowedTools"])
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret", "CLAUDE_CODE_SUBAGENT_MODEL": "wrong"}, clear=False)

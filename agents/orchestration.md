@@ -126,8 +126,55 @@ Independent review is risk-triggered, not a synonym for non-trivial. Use it when
 
 For every triggered material pre-approval Plan, the main session must call the
 actual named-role `plan-verifier` before sending any readiness recommendation.
-If that role is unavailable, pause, report verification unavailable, and never locally substitute `READY` or `REVISE`, even when the Plan looks incomplete or
-the user did not name an agent.
+Never locally substitute `READY` or `REVISE`, even when the Plan looks incomplete
+or the user did not name an agent.
+
+## Review-service circuit breaker
+
+Treat a missing or timed-out `plan-verifier`, `security-reviewer`, or `verifier`
+receipt as a service-availability failure, not as a user decision. Allow one
+bounded retry for the same stable unit and named role. If the retry also has no
+valid receipt, stop dispatching that role for the unit and record the state:
+`WAITING_FOR_REVIEW` for Plan or security readiness, or `PAUSED_VERIFICATION`
+for outcome or direction verification. Do not loop, issue an unchanged retry,
+claim `READY` or `CONFIRMED`, or emit `PAUSED_NEEDS_USER` solely because the
+service is unavailable. Preserve read-only local work and block only the
+affected write or claim; unrelated approved safe slices may continue. Resume
+from the recorded gate when a valid receipt or a genuine user decision arrives.
+
+## Task ledger and blocked-task isolation
+
+When one user prompt contains multiple independently executable outcomes, split
+it into independently trackable task units before execution. The main session
+owns a task ledger; every task records a stable id, outcome, scope, dependencies,
+state, blocker, and completion evidence. Do not treat the prompt as one
+indivisible task merely because it arrived in one message.
+
+Use these task states:
+
+- `PENDING`: identified but not started.
+- `RUNNING`: currently being executed or actively investigated.
+- `DONE`: acceptance and evidence are complete.
+- `BLOCKED`: this task cannot proceed until its cited blocker is resolved.
+
+A task is runnable only when it is `PENDING`, its dependencies are `DONE`, and
+no authority, permission, review, environment, or external prerequisite blocks
+it. Prioritize runnable tasks before revisiting a blocked task. Two or more independent
+runnable tasks with no dependency path or write-ownership conflict should
+execute in parallel, subject to bounded concurrency and main-session integration
+ownership; dependent tasks and tasks sharing mutable scope are serialized. A
+blocked task does not block sibling tasks unless a dependency edge says it does.
+
+When a task becomes blocked, record its blocker and keep the aggregate goal
+incomplete. Do not mark sibling tasks blocked merely because they share the same
+prompt, and do not emit `PAUSED_NEEDS_USER` while runnable tasks remain. Continue
+those tasks within their approved scopes and suppress repeated blocker text
+until evidence, task state, or a user decision changes.
+
+When only blocked tasks remain, emit one consolidated reminder with the blocked
+task ids, blockers, completed work, and exact human recovery point, then wait.
+The goal remains `BLOCKED`, never `DONE`. New evidence or a human response clears
+only the affected task and its dependents; scheduling resumes from the ledger.
 
 ## Bounded slice Plan-readiness contract
 
@@ -138,11 +185,11 @@ The `plan-verifier` output is deliberately strict:
 - A passing verdict is exactly the bare word `READY` on its own. It must not contain approval language or any surrounding explanation.
 - A blocking verdict is never bare. Start with `REVISE`, then provide one block for every currently known claim-relevant P0-P2 blocker. Every block must contain all four labels: `Blocker:`, `Evidence:` (a `file:line` citation when available, otherwise an explicit `Evidence gap:`), `Minimum revision:`, and `Acceptance check:`. P3/P4 advice, optional detail, style, future-slice completeness, and adjacent hardening do not block. A verdict missing any required field cannot advance the Plan.
 
-Any decorated, malformed, or otherwise non-conforming response is a protocol failure, not a readiness verdict. Do not advance readiness or revise the Plan from it. Retry the same unchanged readiness unit once per unit epoch with a fresh `plan-verifier` for format recovery. If that response is also invalid, pause only that unit and report the contract failure to the user. A format-recovery retry is separate from the two valid automatic `REVISE` rounds because it obtained no Plan judgment.
+Any decorated, malformed, or otherwise non-conforming response is a protocol failure, not a readiness verdict. Do not advance readiness or revise the Plan from it. Retry the same unchanged readiness unit once per unit epoch with a fresh `plan-verifier` for format recovery. If that response is also invalid, stop dispatching the role for that unit and record `WAITING_FOR_REVIEW`. A format-recovery retry is separate from the two valid automatic `REVISE` rounds because it obtained no Plan judgment.
 
 For long-running or large work, the main session first records a program envelope owning the outcome and non-goals, cross-cutting architecture/security/privacy invariants, dependency DAG, integration and rollback strategy, and global budget and stop conditions. Give that envelope its own stable readiness-unit ID and send it alone to a fresh `plan-verifier`; it must receive `READY` before any child slice is reviewed. An unresolved cross-cutting blocker in that envelope still prevents dependent readiness reviews and writes. The main session then decomposes the ready envelope into the smallest genuinely independently approvable, executable, and verifiable slices. Every slice has a stable slice ID, exclusive ownership, stable prerequisites, an acceptance check, and a rollback path; cosmetic fragmentation must not bypass a blocker.
 
-Each fresh `plan-verifier` call reviews exactly one readiness unit: the program envelope or one execution slice, never both. Readiness verdicts, Plan epochs, and the automatic `REVISE` count are tracked per stable readiness-unit ID, not across the whole program. Within one unit epoch, after each `REVISE` the main session may materially revise or narrow that envelope or slice, add evidence, or make a genuine split, and must use a fresh `plan-verifier`; it must not reuse the prior reviewer. Child slices receive their own epochs only when their dependencies and acceptance checks are independently meaningful. After two automatic `REVISE` verdicts in one readiness-unit epoch, stop resubmitting and independently disposition every blocker as `FIX`, `DEFER`, or `REJECT`; a material `FIX`, genuine narrowing or split, or evidence-backed `DEFER`/`REJECT` may receive exactly one final fresh `plan-verifier` pass to establish `READY`. The changed unit must carry the revised candidate, claim, or evidence into that pass; this is not an automatic-loop reset, and another `REVISE` pauses or escalates the unit. Ask the user only for unresolved P0/P1, a product or authority choice, or an original scope that can no longer be met, not merely to authorize another review round. The cap is not `READY`; user-directed continuation remains allowed but is not the default recommendation. Superficial rewrites or cosmetic slice splits cannot reset the count.
+Each fresh `plan-verifier` call reviews exactly one readiness unit: the program envelope or one execution slice, never both. Readiness verdicts, Plan epochs, and the automatic `REVISE` count are tracked per stable readiness-unit ID, not across the whole program. Within one unit epoch, after each `REVISE` the main session may materially revise or narrow that envelope or slice, add evidence, or make a genuine split, and must use a fresh `plan-verifier`; it must not reuse the prior reviewer. Child slices receive their own epochs only when their dependencies and acceptance checks are independently meaningful. After two automatic `REVISE` verdicts in one readiness-unit epoch, stop resubmitting and independently disposition every blocker as `FIX`, `DEFER`, or `REJECT`; simplify, narrow, or split the unit and continue independently approvable slices. Ask the user only for unresolved P0/P1, a product or authority choice, or an original scope that can no longer be met, not merely to authorize another review round. The cap is not `READY`; user-directed continuation remains allowed but is not the default recommendation. Do not resubmit a substantially unchanged Plan.
 
 A `READY` slice may be presented for explicit approval and executed while unrelated or later slices remain in planning. A paused slice, its unresolved prerequisite, or an unresolved cross-cutting program-envelope invariant still gates dependent slices; unrelated `READY` slices may proceed after their own explicit approval.
 
@@ -150,7 +197,7 @@ After the envelope is `READY`, review only the next executable slice by default.
 
 Fully specify only the next executable slice. Downstream slice entries retain stable IDs, outcomes, dependency edges, ownership boundaries, acceptance intent, and rollback/stop summaries, but defer implementation detail until that slice becomes next. Missing future detail is not a blocker for the current slice.
 
-For any program envelope or slice involving authentication, authorization, credentials, identity, privacy, secrets, cryptography, validation, hardening, or vulnerabilities, the main session must call the actual named-role `security-reviewer` first, finish that read-only review, and carry its findings and evidence gaps into the slice Plan, program envelope, and decision ledger before calling the actual named-role `plan-verifier` (before the first `plan-verifier` call for that unit). Never launch those reviews concurrently. If either named role is unavailable, pause and report verification unavailable. Refresh the security evidence before a later readiness pass only when a revision changes the trust boundary or invalidates a finding.
+For any program envelope or slice involving authentication, authorization, credentials, identity, privacy, secrets, cryptography, validation, hardening, or vulnerabilities, the main session must call the actual named-role `security-reviewer` first, finish that read-only review, and carry its findings and evidence gaps into the slice Plan, program envelope, and decision ledger before calling the actual named-role `plan-verifier` (before the first `plan-verifier` call for that unit). Never launch those reviews concurrently. If either named role has no valid receipt, apply the review-service circuit breaker and never substitute a local judgment. Refresh the security evidence before a later readiness pass only when a revision changes the trust boundary or invalidates a finding.
 
 `READY` means readiness only, never user approval. The Approval phase remains separate: after a `READY` slice verdict, the main session must still present that slice and wait for explicit user approval before sending an implementation brief or writing. The outcome `verifier` retains its separate `CONFIRMED`/`REFUTED`/`INCONCLUSIVE` vocabulary; no outcome label can substitute for slice readiness or approval.
 
@@ -179,7 +226,7 @@ An unfinished root objective remains active across turns, user decision replies,
 
 Before pausing for user input, state the active objective, current phase or slice, pending decision or blocker, and exact resume point. A reply that unambiguously resolves that pending decision resumes from that point within existing authorization and scope; a status or explanation request does not resolve it. An explicit user pause remains in force until the user resumes or clearly replaces the objective.
 
-Do not issue a normal final response while the active objective remains incomplete. Continue working, or emit `PAUSED_NEEDS_USER` with the blocker, one concise question, and the resume point. This liveness rule does not expand approval, security, destructive-action, external-action, or scope boundaries.
+Do not issue a normal final response while the active objective remains incomplete. Continue working, or emit `PAUSED_NEEDS_USER` with the blocker, one concise question, and the resume point. A review-service circuit-breaker state uses `WAITING_FOR_REVIEW` or `PAUSED_VERIFICATION` with no question when no user decision is pending. This liveness rule does not expand approval, security, destructive-action, external-action, or scope boundaries.
 
 ## Calibrated outcome-verification contract
 
@@ -239,6 +286,6 @@ Risk-triggered readiness units receive a fresh `plan-verifier` pass before appro
 
 Risk-triggered completed-work outcome verification runs at the smallest coherent integration boundary where the complete claim can be independently refuted, after exercising the primary acceptance flow. Tests, builds, and static checks are intermediate evidence during an iteration, not a substitute when the trigger applies. Verify earlier when a change touches security, a cross-language or FFI seam, a serialization or pre-aggregation data boundary, an irreversible operation, or work that could block later integration.
 
-Do not resubmit a substantially unchanged slice Plan to `plan-verifier`; after the two-verdict brake, exactly one final readiness pass requires one of a material `FIX`, an evidence-backed `DEFER`/`REJECT`, or a genuine narrowing or split, plus a fresh reviewer. A further `REVISE` pauses or escalates the unit. If one slice does not converge within two automatic verdicts, use the main-session `FIX`/`DEFER`/`REJECT` disposition, simplify or narrow it, and continue unrelated approved slices. Ask only for an unresolved P0/P1, product or authority choice, or unattainable original scope; never treat the budget cap as `READY`.
+Do not resubmit a substantially unchanged slice Plan to `plan-verifier`. After two automatic verdicts, use the main-session `FIX`/`DEFER`/`REJECT` disposition, simplify or narrow the unit, and continue unrelated approved slices. Ask only for an unresolved P0/P1, product or authority choice, or unattainable original scope; never treat the budget cap as `READY`.
 
 This policy guides model behavior; it does not claim deterministic runtime enforcement.

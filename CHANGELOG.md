@@ -2,6 +2,23 @@
 
 All notable changes to remora are documented here.
 
+## Unreleased
+
+Disable the canonical `pilotfish@pilotfish` plugin only inside Remora sessions
+so its hook policy and namespaced agents cannot compete with Remora's roles.
+Caller settings still merge recursively and unrelated plugins remain enabled.
+
+The example configuration uses Astra for main/Opus, Sol for Sonnet, and Luna
+for Haiku. Existing user configuration and named-agent bindings are preserved;
+pass `--effort low` explicitly for the Astra speed-oriented choice. A bounded
+[smoke report](./benchmarks/astra-root-smoke/README.md) records the observed
+speed/cost trade-offs without claiming subscription-quota savings.
+
+Align shared policy semantics with pilotfish-codex `74ad9a7`: bounded retries
+for unavailable review services, task-ledger isolation of blocked siblings,
+and no automatic extra readiness pass after two `REVISE` verdicts. Claude's
+native background transport and existing approval boundaries remain intact.
+
 ## 0.1.22 - 2026-08-17
 
 Fix the v0.1.21 maintainer clean-room verification command. The runbook now uses the preflight-selected supported Python interpreter, explicitly contains `REMORA_CONFIG`, `TMPDIR`, and state beneath the temporary root, and splits authoritative isolation gates from the diagnostic real `~/.claude` snapshot so concurrent native writers cannot be attributed to remora. Runtime behavior is unchanged apart from `VERSION`.

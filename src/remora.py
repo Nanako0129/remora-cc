@@ -323,6 +323,7 @@ def configured_model_names(config: dict[str, Any]) -> set[str]:
 def routing_settings(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "availableModels": sorted(configured_model_names(config)),
+        "enabledPlugins": {"pilotfish@pilotfish": False},
         "fallbackModel": [],
     }
 

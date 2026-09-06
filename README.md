@@ -1,11 +1,11 @@
 # remora
 
-> Run Claude Code with a cost-aware GPT-5.6 agent fleet for one session.
+> Run Claude Code with a cost-aware OpenAI agent fleet for one session.
 
 **remora** launches Claude Code with session-scoped OpenAI model routing,
-role agents, and orchestration. Sol handles planning and critical review, Luna
-handles lower-cost exploration and implementation, and Terra is the balanced
-interactive option. Exiting the child session removes every override.
+role agents, and orchestration. Astra handles the main session, Sol handles
+planning and critical review, and Luna handles lower-cost exploration and
+implementation. Exiting the child session removes every override.
 
 [繁體中文](./README.zh-TW.md)
 
@@ -34,6 +34,7 @@ interactive option. Exiting the child session removes every override.
 | Authentication | Existing Anthropic login | Child-only gateway token |
 | Settings | Existing Claude hierarchy | Session routing and caller settings |
 | Agents | Project/user/plugin agents | Eight session roles |
+| Canonical Pilotfish plugin | Existing Claude hierarchy | `pilotfish@pilotfish` disabled |
 | Model fallback | Existing behavior | Automatic fallback disabled |
 | Files under `~/.claude` | Unchanged | Never written |
 | Runtime marker | Absent | `REMORA_ACTIVE=1` in the child |
@@ -69,12 +70,12 @@ flowchart LR
     USER -->|remora| LAUNCHER["remora launcher"]
     LAUNCHER -->|child-only environment| GATEWAY["Anthropic-compatible gateway"]
     LAUNCHER -->|session agents and policy| RUNTIME["Claude Code runtime"]
+    RUNTIME --> ASTRA["OpenAI Astra
+    main session"]
     RUNTIME --> SOL["OpenAI Sol
 planning and verification"]
     RUNTIME --> LUNA["OpenAI Luna
 recon and implementation"]
-    RUNTIME --> TERRA["OpenAI Terra
-balanced interactive use"]
 ```
 
 remora is a launcher, not a proxy. Bring an Anthropic Messages-compatible
@@ -83,7 +84,7 @@ the gateway owns protocol translation, OAuth, retries, cooldown, and billing.
 
 | Role | Default model | Effort | Responsibility |
 | --- | --- | ---: | --- |
-| Main session | `gpt-5.6-sol` | User-selected | Plan, decide, integrate |
+| Main session | `gpt-6-astra` | `low` recommended; set explicitly | Plan, decide, integrate |
 | `Explore` | `gpt-5.6-luna` | low | Broad read-only search |
 | `scout` | `gpt-5.6-luna` | low | Focused reconnaissance |
 | `plan-verifier` | `gpt-5.6-sol` | medium | Read-only Plan challenge |
@@ -103,6 +104,7 @@ Runtime behavior and reference documents:
 | Topic | Contract | Reference |
 | --- | --- | --- |
 | Caller settings | Recursively merged; remora-owned keys remain authoritative | [Isolation contract](./docs/architecture.md#isolation-contract) |
+| Pilotfish plugin | Exact canonical id disabled for the child session | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | `fallbackModel: []`; CLI `--fallback-model` is rejected | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` composes caller then remora policy | [Role policy](./docs/architecture.md#role-policy) |
 | Context and Calico | Fails closed on stale or inconsistent metadata | [CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment) |
@@ -211,13 +213,23 @@ compact trigger. When both sources advertise 921,000, all three compact at
 ```bash
 cd ~/src/my-project
 remora
+remora --effort low
 remora --continue
 remora -p 'summarize this repository'
 ```
 
-Unknown arguments pass through to Claude Code. Explicit `--model` or `--agents`
-values replace only that remora default. `--fallback-model` is rejected to keep
-automatic fallback disabled; content after `--` remains untouched.
+The example config routes the main and Opus entries to Astra; start Astra with
+`--effort low`. Unknown arguments pass through to Claude Code, including explicit
+`--model` and `--effort` overrides. An explicit `--agents` value replaces the
+remora roster. `--fallback-model` is rejected to keep automatic fallback
+disabled; content after `--` remains untouched.
+
+The [root-model smoke report](./benchmarks/astra-root-smoke/README.md) records
+one small task per configuration. Astra low was faster for direct work and
+more expensive under Standard API-equivalent pricing; the delegated sample
+was slower. This is a speed/cost choice, not a quota-saving guarantee. The
+installer preserves an existing configuration instead of replacing its model
+choices.
 
 Fast mode is opt-in and session-only:
 
@@ -247,6 +259,12 @@ claude --version
 The first command should show the OpenAI role map; the second remains native
 Claude Code. For file-level evidence, compare a SHA-256 manifest of
 `~/.claude` before and after installation.
+
+remora forces the normally installed `pilotfish@pilotfish` plugin off only in
+its child session and preserves unrelated plugin flags. Managed policy has
+higher precedence and can force it back on; stop an isolation-sensitive run if
+the effective session still reports Pilotfish enabled. Alternate plugin ids and
+explicit custom plugin directories are outside this guarantee.
 
 | Boundary | Enforcement |
 | --- | --- |

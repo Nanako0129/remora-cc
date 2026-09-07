@@ -33,31 +33,82 @@ class RemoraTests(unittest.TestCase):
 
     def test_role_map_matches_pilotfish_style_split(self) -> None:
         agents = remora.render_agents(self.config)
+        expected = {
+            "Explore": ("gpt-5.6-luna", "low"),
+            "scout": ("gpt-5.6-luna", "low"),
+            "plan-verifier": ("gpt-5.6-sol", "high"),
+            "security-reviewer": ("gpt-5.6-sol", "high"),
+            "mech-executor": ("gpt-5.6-luna", "medium"),
+            "executor": ("gpt-5.6-luna", "max"),
+            "verifier": ("gpt-5.6-luna", "xhigh"),
+            "security-executor": ("gpt-5.6-sol", "high"),
+        }
         self.assertEqual(
-            set(agents),
-            {
-                "Explore",
-                "scout",
-                "plan-verifier",
-                "security-reviewer",
-                "mech-executor",
-                "executor",
-                "verifier",
-                "security-executor",
-            },
+            {name: (agent["model"], agent["effort"]) for name, agent in agents.items()},
+            expected,
         )
-        self.assertEqual(agents["scout"]["model"], "gpt-5.6-luna")
-        self.assertEqual(agents["plan-verifier"]["model"], "gpt-5.6-sol")
-        self.assertEqual(agents["plan-verifier"]["effort"], "medium")
+        self.assertEqual(agents["Explore"]["model"], agents["scout"]["model"])
+        self.assertEqual(agents["Explore"]["effort"], agents["scout"]["effort"])
         self.assertEqual(agents["plan-verifier"]["tools"], ["Read", "Glob", "Grep"])
-        self.assertEqual(agents["security-reviewer"]["model"], "gpt-5.6-sol")
-        self.assertEqual(agents["security-reviewer"]["effort"], "high")
         self.assertIn("WebSearch", agents["security-reviewer"]["tools"])
-        self.assertEqual(agents["mech-executor"]["model"], "gpt-5.6-luna")
-        self.assertEqual(agents["executor"]["model"], "gpt-5.6-luna")
-        self.assertEqual(agents["executor"]["effort"], "max")
-        self.assertEqual(agents["verifier"]["effort"], "high")
         self.assertIn("Agent", agents["executor"]["disallowedTools"])
+
+    def test_tracked_source_excludes_removed_root_recommendation(self) -> None:
+        removed = bytes((97, 115, 116, 114, 97))
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "-z"], cwd=ROOT
+        ).split(b"\0")
+        offenders = []
+        for raw_path in tracked:
+            if not raw_path:
+                continue
+            path = ROOT / os.fsdecode(raw_path)
+            if not path.exists():
+                continue
+            if removed in raw_path.lower() or removed in path.read_bytes().lower():
+                offenders.append(str(path.relative_to(ROOT)))
+        self.assertFalse(
+            (ROOT / ("benchmarks/" + "a" + "stra-root-smoke")).exists()
+        )
+        self.assertEqual(offenders, [])
+
+    def test_default_effort_is_inserted_and_explicit_forms_win(self) -> None:
+        command, _ = remora.build_launch(self.config, [], require_token=False)
+        self.assertEqual(command[command.index("--effort") + 1], "high")
+
+        for override in (["--effort", "low"], ["--effort=low"]):
+            with self.subTest(override=override):
+                command, _ = remora.build_launch(
+                    self.config, override, require_token=False
+                )
+                self.assertEqual(command[-len(override) :], override)
+                self.assertEqual(
+                    sum(
+                        arg == "--effort" or arg.startswith("--effort=")
+                        for arg in command
+                    ),
+                    1,
+                )
+
+        command, _ = remora.build_launch(
+            self.config, ["--", "--effort", "low"], require_token=False
+        )
+        self.assertEqual(command[command.index("--effort") + 1], "high")
+        self.assertEqual(command[-3:], ["--", "--effort", "low"])
+
+        command, _ = remora.build_launch(
+            self.config, ["--append-system-prompt", "--effort"], require_token=False
+        )
+        self.assertEqual(command[command.index("--effort") + 1], "high")
+        self.assertTrue(command[-1].startswith("--effort\n\n# remora session orchestration"))
+
+    def test_default_effort_accepts_only_supported_values(self) -> None:
+        for value in ("", "reasoning", 1, True, None):
+            with self.subTest(value=value):
+                config = json.loads(json.dumps(self.config))
+                config["runtime"]["default_effort"] = value
+                with self.assertRaisesRegex(remora.RemoraError, "runtime.default_effort"):
+                    remora.validate_config(config)
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret", "CLAUDE_CODE_SUBAGENT_MODEL": "wrong"}, clear=False)
     def test_launch_is_session_scoped_and_clears_global_override(self) -> None:
@@ -65,20 +116,20 @@ class RemoraTests(unittest.TestCase):
             remora,
             "fetch_gateway_context_windows",
             return_value={
-                "gpt-6-astra": 372000,
                 "gpt-5.6-sol": 372000,
                 "gpt-5.6-luna": 372000,
             },
         ):
             command, env = remora.build_launch(self.config, ["--continue"])
         self.assertEqual(command[0], "claude")
-        self.assertEqual(command[command.index("--model") + 1], "gpt-6-astra")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-sol")
+        self.assertEqual(command[command.index("--effort") + 1], "high")
         self.assertTrue(command[command.index("--settings") + 1].startswith("{"))
         settings = launch_settings(command)
         self.assertEqual(settings["fallbackModel"], [])
         self.assertEqual(
             settings["availableModels"],
-            ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"],
+            ["gpt-5.6-luna", "gpt-5.6-sol"],
         )
         self.assertEqual(
             settings["enabledPlugins"], {"pilotfish@pilotfish": False}
@@ -1156,7 +1207,7 @@ class RemoraTests(unittest.TestCase):
             self.assertEqual(settings["permissions"], {"allow": ["Read"]})
             self.assertEqual(
                 settings["availableModels"],
-                ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"],
+                ["gpt-5.6-luna", "gpt-5.6-sol"],
             )
         finally:
             remora.close_launch_resources(env)
@@ -1580,7 +1631,6 @@ class RemoraTests(unittest.TestCase):
                 "availableModels": [
                     "gpt-5.6-luna",
                     "gpt-5.6-sol",
-                    "gpt-6-astra",
                 ],
                 "enabledPlugins": {"pilotfish@pilotfish": False},
                 "fallbackModel": [],
@@ -1741,7 +1791,7 @@ class RemoraTests(unittest.TestCase):
             path.write_text((ROOT / "config.example.toml").read_text(), encoding="utf-8")
             with mock.patch.dict(os.environ, {"REMORA_CONFIG": str(path)}):
                 self.assertEqual(remora.config_path(), path)
-                self.assertEqual(remora.load_config()["models"]["main"], "gpt-6-astra")
+                self.assertEqual(remora.load_config()["models"]["main"], "gpt-5.6-sol")
 
     def test_context_policy_uses_safe_fallback_offline(self) -> None:
         policy = remora.resolve_context_policy(self.config)
@@ -1755,7 +1805,6 @@ class RemoraTests(unittest.TestCase):
 
     def test_context_policy_uses_smallest_configured_gateway_window(self) -> None:
         windows = {
-            "gpt-6-astra": 500000,
             "gpt-5.6-sol": 1050000,
             "gpt-5.6-luna": 372000,
         }
@@ -1787,12 +1836,10 @@ class RemoraTests(unittest.TestCase):
         config = json.loads(json.dumps(self.config))
         config["context"]["mode"] = "calico"
         gateway_windows = {
-            "gpt-6-astra": 372000,
             "gpt-5.6-sol": 372000,
             "gpt-5.6-luna": 372000,
         }
         codex_windows = {
-            "gpt-6-astra": 272000,
             "gpt-5.6-sol": 272000,
             "gpt-5.6-luna": 272000,
         }
@@ -2062,7 +2109,6 @@ class RemoraTests(unittest.TestCase):
             remora,
             "fetch_gateway_context_windows",
             return_value={
-                "gpt-6-astra": 372000,
                 "gpt-5.6-sol": 372000,
                 "gpt-5.6-luna": 372000,
             },
@@ -2092,7 +2138,6 @@ class RemoraTests(unittest.TestCase):
         remora,
         "fetch_gateway_context_windows",
         return_value={
-            "gpt-6-astra": 372000,
             "gpt-5.6-sol": 372000,
             "gpt-5.6-luna": 372000,
         },

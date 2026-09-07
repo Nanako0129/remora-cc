@@ -96,9 +96,12 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(command[command.index("--effort") + 1], "high")
         self.assertEqual(command[-3:], ["--", "--effort", "low"])
 
-        command, _ = remora.build_launch(
-            self.config, ["--append-system-prompt", "--effort"], require_token=False
-        )
+        with mock.patch.dict(
+            os.environ, {remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"}, clear=False
+        ):
+            command, _ = remora.build_launch(
+                self.config, ["--append-system-prompt", "--effort"], require_token=False
+            )
         self.assertEqual(command[command.index("--effort") + 1], "high")
         self.assertTrue(command[-1].startswith("--effort\n\n# remora session orchestration"))
 

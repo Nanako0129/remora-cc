@@ -28,7 +28,7 @@ elif [ -e "$LINK" ]; then
   echo "Kept unrelated file: $LINK"
 fi
 
-rm -rf "$INSTALL_DIR" "$STATE_DIR/coralline"
+rm -rf "$INSTALL_DIR" "$STATE_DIR/coralline" "$STATE_DIR/orchestration"
 # Remove the state root only when empty. If XDG_STATE_HOME and XDG_CONFIG_HOME
 # alias, config.toml keeps this directory non-empty and therefore preserved.
 rmdir "$STATE_DIR" 2>/dev/null || true

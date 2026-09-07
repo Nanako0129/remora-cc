@@ -58,13 +58,6 @@ KNOWN_ROLES = frozenset(
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._:-]{1,256}$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:/+@-]{1,128}$")
-_PLAN_RE = re.compile(
-    r"(?:\b(?:plan|planning|pre-approval|approval|approve|readiness|proposal|"
-    r"deploy|deployment|migrate|migration|destructive|delete|drop|truncate|purge|overwrite|"
-    r"force[- ]push|release|publish|send)\b|"
-    r"計畫|規劃|方案|核准|批准|審核|部署|上線|遷移|移轉|刪除|清除|覆寫|發布|發佈|傳送)",
-    re.IGNORECASE,
-)
 _CATEGORY_PATTERNS = {
     "data": re.compile(
         r"\b(?:data|database|schema|serialization|migration|pii|personal data|"
@@ -88,7 +81,7 @@ _CATEGORY_PATTERNS = {
     ),
     "security": re.compile(
         r"\b(?:security|secure|trust boundary|authentication|authorization|"
-        r"authn|authz|credential|secret|permission|iam|cryptography|crypto|"
+        r"authn|authz|credentials?|secrets?|permissions?|iam|cryptography|crypto|"
         r"encryption|vulnerabilit(?:y|ies))\b|安全|信任邊界|身分驗證|身份驗證|"
         r"認證|授權|憑證|密鑰|祕密|秘密|權限|加密|漏洞",
         re.IGNORECASE,
@@ -167,8 +160,6 @@ def review_request(prompt_id: str) -> str:
 def classify_prompt(prompt: object) -> tuple[str, ...]:
     """Return bounded material-risk labels without retaining prompt text."""
     if not isinstance(prompt, str) or len(prompt) > MAX_PROMPT_CHARS:
-        return ()
-    if _PLAN_RE.search(prompt) is None:
         return ()
     return tuple(
         sorted(

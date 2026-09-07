@@ -273,6 +273,8 @@ class RuntimeTests(unittest.TestCase):
             "Deploy the service to production.",
             "Send an email.",
             "Destructive operation.",
+            "Rotate credentials.",
+            "Modify the database schema.",
         ):
             with self.subTest(prompt=prompt):
                 self.assertTrue(runtime.requires_review(runtime.classify_prompt(prompt)))

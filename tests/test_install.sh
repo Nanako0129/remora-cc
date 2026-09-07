@@ -57,6 +57,7 @@ HOME="$TMP" \
 XDG_CONFIG_HOME="$TMP/.config" \
 REMORA_AUTH_TOKEN=test-only \
   "$TMP/.local/bin/remora" doctor >/dev/null
+PATH="$TMP/bin:$PATH" \
 HOME="$TMP" \
 XDG_CONFIG_HOME="$TMP/.config" \
 XDG_STATE_HOME="$TMP/.local/state" \
@@ -72,6 +73,8 @@ XDG_STATE_HOME="$TMP/.local/state" \
 REMORA_AUTH_TOKEN=test-only \
   "$TMP/.local/bin/remora" --continue >/dev/null
 find "$TMP/.local/state/remora-cc" -name 'config-*.conf' -type f | grep -q .
+mkdir -p "$TMP/.local/state/remora-cc/orchestration/sessions"
+touch "$TMP/.local/state/remora-cc/orchestration/sessions/owned-state"
 AFTER_LAUNCH=$(find "$TMP/.claude" -type f -print | sort)
 test "$BEFORE" = "$AFTER_LAUNCH"
 test "$BEFORE_CONTENT" = "$(cksum "$TMP/.claude/settings.json")"
@@ -89,8 +92,10 @@ test -f "$TMP/.config/remora-cc/config.toml"
 
 # If XDG state and config homes alias, default uninstall must remove only the
 # known runtime subtree and preserve config.toml as promised.
-mkdir -p "$TMP/alias/remora-cc/coralline" "$TMP/alias-data/remora-cc"
-touch "$TMP/alias/remora-cc/config.toml" "$TMP/alias/remora-cc/coralline/runtime"
+mkdir -p "$TMP/alias/remora-cc/coralline" \
+  "$TMP/alias/remora-cc/orchestration/latest" "$TMP/alias-data/remora-cc"
+touch "$TMP/alias/remora-cc/config.toml" "$TMP/alias/remora-cc/coralline/runtime" \
+  "$TMP/alias/remora-cc/orchestration/latest/receipt.json"
 HOME="$TMP" \
 REMORA_PREFIX="$TMP/alias-prefix" \
 XDG_DATA_HOME="$TMP/alias-data" \
@@ -99,6 +104,7 @@ XDG_STATE_HOME="$TMP/alias" \
   "$ROOT/uninstall.sh" >/dev/null
 test -f "$TMP/alias/remora-cc/config.toml"
 test ! -e "$TMP/alias/remora-cc/coralline"
+test ! -e "$TMP/alias/remora-cc/orchestration"
 
 AFTER_UNINSTALL=$(find "$TMP/.claude" -type f -print | sort)
 test "$BEFORE" = "$AFTER_UNINSTALL"

@@ -25,6 +25,7 @@ from typing import Any
 
 SCHEMA = 1
 REQUIRED_TASK = "automatic_plan_review"
+SEMANTIC_TASK = "semantic_adjudication"
 REVIEW_MODE = "readiness_review"
 MAX_HOOK_INPUT_BYTES = 1_048_576
 MAX_PROMPT_CHARS = 65_536
@@ -58,8 +59,10 @@ IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._:-]{1,256}$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:/+@-]{1,128}$")
 _PLAN_RE = re.compile(
-    r"(?:\b(?:plan|planning|pre-approval|approval|approve|readiness|proposal)\b|"
-    r"計畫|規劃|方案|核准|批准|審核)",
+    r"(?:\b(?:plan|planning|pre-approval|approval|approve|readiness|proposal|"
+    r"deploy|deployment|migrate|migration|destructive|delete|drop|truncate|purge|overwrite|"
+    r"force[- ]push|release|publish|send)\b|"
+    r"計畫|規劃|方案|核准|批准|審核|部署|上線|遷移|移轉|刪除|清除|覆寫|發布|發佈|傳送)",
     re.IGNORECASE,
 )
 _CATEGORY_PATTERNS = {
@@ -69,7 +72,7 @@ _CATEGORY_PATTERNS = {
         re.IGNORECASE,
     ),
     "external": re.compile(
-        r"\b(?:external|third[- ]party|remote system|send (?:email|message)|"
+        r"\b(?:external|third[- ]party|remote system|send (?:an? )?(?:email|message)|"
         r"external mutation|external action)\b|外部系統|第三方|對外",
         re.IGNORECASE,
     ),
@@ -740,7 +743,12 @@ def _correlate_root(
     active: dict[str, Any],
     *,
     session_id: str,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str]:
+    contract = (
+        REQUIRED_TASK
+        if child.get("role") == "plan-verifier" and active.get("required")
+        else "typed_dispatch"
+    )
     message_events = [
         event
         for event in events
@@ -748,7 +756,7 @@ def _correlate_root(
         and isinstance(event.get("message"), dict)
     ]
     if not message_events or any(event.get("sessionId") != session_id for event in message_events):
-        return False, "root_session_identity_mismatch"
+        return False, "root_session_identity_mismatch", contract
     uses, results = _tool_pairs(events)
     launches: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
     for tool_id, use in uses.items():
@@ -767,21 +775,25 @@ def _correlate_root(
         ):
             launches.append((tool_id, inputs, result))
     if len(launches) != 1:
-        return False, "parent_child_link_missing"
+        return False, "parent_child_link_missing", contract
     _, inputs, result = launches[0]
     if "model" in inputs:
-        return False, "invocation_model_override"
+        return False, "invocation_model_override", contract
     resolved_model = result.get("resolvedModel")
     if not _safe_runtime_value(resolved_model):
-        return False, "resolved_model_missing"
+        return False, "resolved_model_missing", contract
     if resolved_model != child["expected"]["model"]:
-        return False, "resolved_model_mismatch"
-    if child.get("role") == "plan-verifier" and active.get("required"):
+        return False, "resolved_model_mismatch", contract
+    if child.get("role") == "plan-verifier":
         prompt = inputs.get("prompt")
         expected_tag = f"{REQUIRED_TASK}:{active['prompt_hash']}"
         lines = [line.strip() for line in prompt.splitlines() if line.strip()] if isinstance(prompt, str) else []
-        if lines[:2] != [REVIEW_MODE, expected_tag]:
-            return False, "readiness_contract_missing"
+        if lines[:2] == [REVIEW_MODE, expected_tag]:
+            contract = REQUIRED_TASK
+        elif lines[:1] == [SEMANTIC_TASK]:
+            contract = SEMANTIC_TASK
+        elif active.get("required"):
+            return False, "readiness_contract_missing", REQUIRED_TASK
     if result.get("status") == "async_launched":
         raw_agent = result.get("agentId")
         completed = False
@@ -802,10 +814,10 @@ def _correlate_root(
             ):
                 completed = True
         if not completed:
-            return False, "async_completion_missing"
+            return False, "async_completion_missing", contract
     elif result.get("status") not in {"completed", "success"}:
-        return False, "completion_missing"
-    return True, "complete"
+        return False, "completion_missing", contract
+    return True, "complete", contract
 
 
 def _receipt(
@@ -846,7 +858,7 @@ def _receipt(
         )
     ):
         status, reason = "FAILED", "hook_transcript_effort_mismatch"
-    elif contract == REQUIRED_TASK and observed.get("verdict") == "MALFORMED":
+    elif contract in {REQUIRED_TASK, SEMANTIC_TASK} and observed.get("verdict") == "MALFORMED":
         status, reason = "FAILED", "invalid_readiness_verdict"
     receipt: dict[str, Any] = {
         "schema": SCHEMA,
@@ -882,7 +894,7 @@ def _write_receipt(state_root: Path, receipt: dict[str, Any]) -> bool:
         return False
     role = receipt.get("role")
     contract = receipt.get("contract")
-    if role not in KNOWN_ROLES or contract not in {REQUIRED_TASK, "typed_dispatch"}:
+    if role not in KNOWN_ROLES or contract not in {REQUIRED_TASK, SEMANTIC_TASK, "typed_dispatch"}:
         return False
     path = directory / f"{role}-{contract}.json"
     if path.exists():
@@ -912,7 +924,7 @@ def _valid_receipt(value: object) -> bool:
         value.get("schema") != SCHEMA
         or value.get("status") not in {"VERIFIED", "SKIPPED", "FAILED"}
         or value.get("role") not in KNOWN_ROLES
-        or value.get("contract") not in {REQUIRED_TASK, "typed_dispatch"}
+        or value.get("contract") not in {REQUIRED_TASK, SEMANTIC_TASK, "typed_dispatch"}
         or value.get("completion_status") not in {"completed", "unknown"}
         or value.get("verdict_status") not in {"READY", "REVISE", "MALFORMED"}
         or not isinstance(value.get("readiness_granted"), bool)
@@ -1072,7 +1084,10 @@ def _handle_subagent_stop(payload: dict[str, Any], state_root: Path, projects_ro
             if (
                 not observation["missing_model"]
                 and not observation["missing_effort"]
-                and observation["verdict"] != "MALFORMED"
+                and (
+                    role != "plan-verifier"
+                    or observation["verdict"] != "MALFORMED"
+                )
             ):
                 break
         if attempt + 1 < TRANSCRIPT_SETTLE_ATTEMPTS:
@@ -1135,12 +1150,11 @@ def _handle_root_stop(payload: dict[str, Any], state_root: Path, projects_root: 
         for child in active.get("children", []):
             if not isinstance(child, dict) or not child.get("completed"):
                 continue
-            correlated, reason = _correlate_root(
+            correlated, reason, contract = _correlate_root(
                 events, child, active, session_id=session_id
             )
             child["correlated"] = correlated
             child["correlation_reason"] = reason
-            contract = REQUIRED_TASK if child.get("role") == "plan-verifier" and active.get("required") else "typed_dispatch"
             receipt = _receipt(
                 role=child["role"],
                 contract=contract,
@@ -1153,9 +1167,10 @@ def _handle_root_stop(payload: dict[str, Any], state_root: Path, projects_root: 
                 receipt.update(status="FAILED", reason="source_drift", readiness_granted=False)
             produced.append(receipt)
         review = [receipt for receipt in produced if receipt["contract"] == REQUIRED_TASK]
-        valid = len(review) == 1 and review[0]["status"] == "VERIFIED"
+        latest_review = review[-1] if review else None
+        valid = latest_review is not None and latest_review["status"] == "VERIFIED"
         state["status"] = (
-            {"status": "VERIFIED", "reason": review[0]["verdict_status"]}
+            {"status": "VERIFIED", "reason": latest_review["verdict_status"]}
             if valid
             else {"status": "WAITING_FOR_REVIEW", "reason": "review_evidence_missing"}
             if active.get("required")
@@ -1283,7 +1298,7 @@ def verify_named_files(
         "observed": observation,
         "transcript_hash": child[1],
     }
-    correlated, reason = _correlate_root(
+    correlated, reason, contract = _correlate_root(
         root[0], child_state, active, session_id=session_id
     )
     child_state.update(correlated=correlated, correlation_reason=reason)
@@ -1294,7 +1309,7 @@ def verify_named_files(
     }
     return _receipt(
         role=role,
-        contract=REQUIRED_TASK if role == "plan-verifier" else "typed_dispatch",
+        contract=contract,
         active=active,
         child=child_state,
         source_hashes=source_hashes,

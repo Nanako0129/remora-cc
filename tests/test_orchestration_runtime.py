@@ -150,15 +150,68 @@ class RuntimeTests(unittest.TestCase):
         write_jsonl(path, events)
         return path
 
-    def start_and_stop_child(self, child_path: Path, *, verdict: str = "READY") -> None:
+    def root_transcript_for_reviewers(
+        self, calls: list[tuple[str, str]]
+    ) -> Path:
+        events: list[dict[str, object]] = []
+        for index, (agent_id, prompt) in enumerate(calls):
+            tool_id = f"tool-agent-{index}"
+            events.extend(
+                [
+                    {
+                        "type": "assistant",
+                        "sessionId": "root-session",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": tool_id,
+                                    "name": "Agent",
+                                    "input": {
+                                        "subagent_type": "plan-verifier",
+                                        "prompt": prompt,
+                                    },
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "type": "user",
+                        "sessionId": "root-session",
+                        "message": {
+                            "content": [
+                                {"type": "tool_result", "tool_use_id": tool_id}
+                            ]
+                        },
+                        "toolUseResult": {
+                            "status": "completed",
+                            "agentId": agent_id,
+                            "resolvedModel": "gpt-5.6-sol",
+                        },
+                    },
+                ]
+            )
+        path = self.projects / "project" / "root-session.jsonl"
+        write_jsonl(path, events)
+        return path
+
+    def start_and_stop_child(
+        self,
+        child_path: Path,
+        *,
+        verdict: str = "READY",
+        role: str = "plan-verifier",
+        effort: str = "high",
+    ) -> None:
+        agent_id = child_path.stem.removeprefix("agent-")
         runtime.handle(
             {
                 "hook_event_name": "SubagentStart",
                 "session_id": "root-session",
                 "prompt_id": "native-prompt",
-                "agent_id": "child-one",
-                "agent_type": "plan-verifier",
-                "effort": {"level": "high"},
+                "agent_id": agent_id,
+                "agent_type": role,
+                "effort": {"level": effort},
             }
         )
         runtime.handle(
@@ -166,9 +219,9 @@ class RuntimeTests(unittest.TestCase):
                 "hook_event_name": "SubagentStop",
                 "session_id": "root-session",
                 "prompt_id": "native-prompt",
-                "agent_id": "child-one",
-                "agent_type": "plan-verifier",
-                "effort": {"level": "high"},
+                "agent_id": agent_id,
+                "agent_type": role,
+                "effort": {"level": effort},
                 "transcript_path": str(child_path.parent.parent.with_suffix(".jsonl")),
                 "agent_transcript_path": str(child_path),
                 "last_assistant_message": verdict,
@@ -214,6 +267,15 @@ class RuntimeTests(unittest.TestCase):
                 categories = runtime.classify_prompt(prompt)
                 self.assertIn(category, categories)
                 self.assertTrue(runtime.requires_review(categories))
+
+        for prompt in (
+            "Migrate the database.",
+            "Deploy the service to production.",
+            "Send an email.",
+            "Destructive operation.",
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertTrue(runtime.requires_review(runtime.classify_prompt(prompt)))
 
     def test_matching_sync_runtime_evidence_verifies_ready(self) -> None:
         runtime.handle(self.prompt())
@@ -367,7 +429,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.latest()["verdict_status"], "REVISE")
         self.assertFalse(self.latest()["readiness_granted"])
 
-    def test_semantic_adjudication_or_missing_tag_cannot_verify(self) -> None:
+    def test_semantic_adjudication_does_not_satisfy_readiness(self) -> None:
         runtime.handle(self.prompt())
         self.start_and_stop_child(self.child_transcript())
         response = runtime.handle(
@@ -380,7 +442,58 @@ class RuntimeTests(unittest.TestCase):
             }
         )
         self.assertEqual(response["decision"], "block")
-        self.assertEqual(self.latest()["reason"], "readiness_contract_missing")
+        semantic = json.loads(
+            (self.state / "latest" / "plan-verifier-semantic_adjudication.json").read_text()
+        )
+        self.assertEqual(semantic["status"], "VERIFIED")
+        self.assertFalse(semantic["readiness_granted"])
+        self.assertFalse(
+            (self.state / "latest" / "plan-verifier-automatic_plan_review.json").exists()
+        )
+
+    def test_latest_readiness_review_controls_status(self) -> None:
+        runtime.handle(self.prompt())
+        revise = "REVISE\nBlocker: x\nEvidence: y\nMinimum revision: z\nAcceptance check: q"
+        self.start_and_stop_child(
+            self.child_transcript(agent_id="child-revise", text=revise),
+            verdict=revise,
+        )
+        self.start_and_stop_child(self.child_transcript(agent_id="child-ready"))
+        root = self.root_transcript_for_reviewers(
+            [
+                ("child-revise", runtime.review_request("native-prompt")),
+                ("child-ready", runtime.review_request("native-prompt")),
+            ]
+        )
+        response = runtime.handle(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "root-session",
+                "prompt_id": "native-prompt",
+                "transcript_path": str(root),
+                "stop_hook_active": False,
+            }
+        )
+        self.assertIsNone(response)
+        self.assertEqual(self.latest()["verdict_status"], "READY")
+        self.assertTrue(self.latest()["readiness_granted"])
+
+    def test_non_review_role_does_not_wait_for_readiness_grammar(self) -> None:
+        runtime.handle(self.prompt())
+        child = self.child_transcript(
+            agent_id="worker-one",
+            model="gpt-5.6-luna",
+            effort="max",
+            text="Implementation complete.",
+        )
+        with mock.patch.object(runtime.time, "sleep") as sleep:
+            self.start_and_stop_child(
+                child,
+                verdict="Implementation complete.",
+                role="executor",
+                effort="max",
+            )
+        sleep.assert_not_called()
 
     def test_same_blocker_is_blocked_only_once(self) -> None:
         runtime.handle(self.prompt())

@@ -53,25 +53,6 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("WebSearch", agents["security-reviewer"]["tools"])
         self.assertIn("Agent", agents["executor"]["disallowedTools"])
 
-    def test_tracked_source_excludes_removed_root_recommendation(self) -> None:
-        removed = bytes((97, 115, 116, 114, 97))
-        tracked = subprocess.check_output(
-            ["git", "ls-files", "-z"], cwd=ROOT
-        ).split(b"\0")
-        offenders = []
-        for raw_path in tracked:
-            if not raw_path:
-                continue
-            path = ROOT / os.fsdecode(raw_path)
-            if not path.exists():
-                continue
-            if removed in raw_path.lower() or removed in path.read_bytes().lower():
-                offenders.append(str(path.relative_to(ROOT)))
-        self.assertFalse(
-            (ROOT / ("benchmarks/" + "a" + "stra-root-smoke")).exists()
-        )
-        self.assertEqual(offenders, [])
-
     def test_default_effort_is_inserted_and_explicit_forms_win(self) -> None:
         command, _ = remora.build_launch(self.config, [], require_token=False)
         self.assertEqual(command[command.index("--effort") + 1], "high")

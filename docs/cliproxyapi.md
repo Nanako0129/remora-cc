@@ -191,8 +191,8 @@ remora forwards model names exactly as configured. Confirm every name appears in
 
 | remora field | Default |
 |---|---|
-| `models.main` | `gpt-6-astra` |
-| `models.default_opus` | `gpt-6-astra` |
+| `models.main` | `gpt-5.6-sol` |
+| `models.default_opus` | `gpt-5.6-sol` |
 | `models.default_sonnet` | `gpt-5.6-sol` |
 | `models.default_haiku` | `gpt-5.6-luna` |
 

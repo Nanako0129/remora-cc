@@ -268,6 +268,29 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.latest()["status"], "SKIPPED")
         self.assertEqual(self.latest()["reason"], "observed_model_or_effort_missing")
 
+    def test_subagent_stop_retries_lagging_transcript(self) -> None:
+        runtime.handle(self.prompt())
+        child = self.child_transcript()
+        settled = runtime._jsonl(child, projects_root=self.projects)
+        self.assertIsNotNone(settled)
+        with (
+            mock.patch.object(runtime, "_jsonl", side_effect=[None, settled]),
+            mock.patch.object(runtime.time, "sleep") as sleep,
+        ):
+            self.start_and_stop_child(child)
+        sleep.assert_called_once_with(runtime.TRANSCRIPT_SETTLE_SECONDS)
+
+        runtime.handle(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "root-session",
+                "prompt_id": "native-prompt",
+                "transcript_path": str(self.root_transcript()),
+                "stop_hook_active": False,
+            }
+        )
+        self.assertEqual(self.latest()["status"], "VERIFIED")
+
     def test_missing_resolved_model_never_verifies(self) -> None:
         runtime.handle(self.prompt())
         self.start_and_stop_child(self.child_transcript())

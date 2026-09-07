@@ -8,8 +8,8 @@ auth_token_env = "REMORA_AUTH_TOKEN"
 auth_token_command = []
 
 [models]
-main = "gpt-6-astra"
-default_opus = "gpt-6-astra"
+main = "gpt-5.6-sol"
+default_opus = "gpt-5.6-sol"
 default_sonnet = "gpt-5.6-sol"
 default_haiku = "gpt-5.6-luna"
 
@@ -39,21 +39,22 @@ plan-verifier = "gpt-5.6-sol"
 security-reviewer = "gpt-5.6-sol"
 mech-executor = "gpt-5.6-luna"
 executor = "gpt-5.6-luna"
-verifier = "gpt-5.6-sol"
+verifier = "gpt-5.6-luna"
 security-executor = "gpt-5.6-sol"
 
 [agent_effort]
 Explore = "low"
 scout = "low"
-plan-verifier = "medium"
+plan-verifier = "high"
 security-reviewer = "high"
 mech-executor = "medium"
 executor = "max"
-verifier = "high"
-security-executor = "max"
+verifier = "xhigh"
+security-executor = "high"
 
 [runtime]
 claude_binary = "claude"
+default_effort = "high"
 # Register bounded native hooks only while remora owns the role map and policy.
 # Set false to omit every remora hook group and orchestration state variable.
 orchestration_hooks = true

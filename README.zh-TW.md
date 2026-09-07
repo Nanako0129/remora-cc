@@ -3,9 +3,8 @@
 > 在單一 session 中，讓 Claude Code 使用兼顧成本的 OpenAI agent fleet。
 
 **remora** 以 session-scoped OpenAI model routing、角色 agents 與
-orchestration 啟動 Claude Code。Astra 負責 main session，Sol 負責規劃與關鍵
-審查，Luna 負責成本較低的探索與實作。Child session 結束後，所有 override
-都會消失。
+orchestration 啟動 Claude Code。Sol 負責 main session、規劃與關鍵審查，Luna
+負責成本較低的探索與實作。Child session 結束後，所有 override 都會消失。
 
 [English](./README.md)
 
@@ -66,10 +65,8 @@ flowchart LR
     USER -->|remora| LAUNCHER["remora launcher"]
     LAUNCHER -->|child-only environment| GATEWAY["Anthropic-compatible gateway"]
     LAUNCHER -->|session agents 與 policy| RUNTIME["Claude Code runtime"]
-    RUNTIME --> ASTRA["OpenAI Astra
-    main session"]
     RUNTIME --> SOL["OpenAI Sol
-規劃與驗證"]
+main session、規劃與驗證"]
     RUNTIME --> LUNA["OpenAI Luna
 探索與實作"]
 ```
@@ -81,15 +78,15 @@ translation、OAuth、retry、cooldown 與 billing 都由 gateway 負責。
 
 | 角色 | 預設模型 | Effort | 責任 |
 | --- | --- | ---: | --- |
-| Main session | `gpt-6-astra` | 建議明確傳入 `low` | 規劃、決策、整合 |
+| Main session | `gpt-5.6-sol` | 預設 high；caller 可覆寫 | 規劃、決策、整合 |
 | `Explore` | `gpt-5.6-luna` | low | 廣域唯讀搜尋 |
 | `scout` | `gpt-5.6-luna` | low | 聚焦偵察 |
-| `plan-verifier` | `gpt-5.6-sol` | medium | 唯讀 Plan 挑戰 |
+| `plan-verifier` | `gpt-5.6-sol` | high | 唯讀 Plan 挑戰 |
 | `security-reviewer` | `gpt-5.6-sol` | high | 唯讀安全證據 |
 | `mech-executor` | `gpt-5.6-luna` | medium | 機械式實作 |
 | `executor` | `gpt-5.6-luna` | max | 需要判斷的實作 |
-| `verifier` | `gpt-5.6-sol` | high | 對抗式結果驗證 |
-| `security-executor` | `gpt-5.6-sol` | max | 已批准的安全實作 |
+| `verifier` | `gpt-5.6-luna` | xhigh | 對抗式結果驗證 |
+| `security-executor` | `gpt-5.6-sol` | high | 已批准的安全實作 |
 
 | Context 模式 | Claude binary | Client window | 使用時機 |
 | --- | --- | ---: | --- |
@@ -207,20 +204,14 @@ auth_token_command = [
 ```bash
 cd ~/src/my-project
 remora
-remora --effort low
 remora --continue
 remora -p 'summarize this repository'
 ```
 
-範例設定會把 main 與 Opus 入口導向 Astra；使用 Astra 時請傳入
-`--effort low`。未知參數會原樣交給 Claude Code，包括明確的 `--model` 與
-`--effort` override。明確的 `--agents` 會取代 remora roster。
+範例設定會把 main、Opus 與 Sonnet 入口導向 Sol，把 Haiku 導向 Luna。
+若 caller 沒有提供 `--effort` 或 `--effort=`，remora 會加入 `--effort high`。
+未知參數會原樣交給 Claude Code。明確的 `--agents` 會取代 remora roster。
 `--fallback-model` 會被拒絕，以維持停用自動 fallback；`--` 後的內容完全不動。
-
-[主模型實測報告](./benchmarks/astra-root-smoke/README.md) 每組只有一個小任務。
-Astra low 的直接執行較快，但 Standard API 等值成本較高；委派樣本則較慢。
-這是速度與成本的取捨，沒有證明能節省訂閱額度。安裝器會保留既有設定，
-不會自動替換其中的模型選擇。
 
 Fast 模式是 opt-in 且只作用於目前 session：
 

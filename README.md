@@ -3,9 +3,9 @@
 > Run Claude Code with a cost-aware OpenAI agent fleet for one session.
 
 **remora** launches Claude Code with session-scoped OpenAI model routing,
-role agents, and orchestration. Astra handles the main session, Sol handles
-planning and critical review, and Luna handles lower-cost exploration and
-implementation. Exiting the child session removes every override.
+role agents, and orchestration. Sol handles the main session, planning, and
+critical review, while Luna handles lower-cost exploration and implementation.
+Exiting the child session removes every override.
 
 [繁體中文](./README.zh-TW.md)
 
@@ -70,10 +70,8 @@ flowchart LR
     USER -->|remora| LAUNCHER["remora launcher"]
     LAUNCHER -->|child-only environment| GATEWAY["Anthropic-compatible gateway"]
     LAUNCHER -->|session agents and policy| RUNTIME["Claude Code runtime"]
-    RUNTIME --> ASTRA["OpenAI Astra
-    main session"]
     RUNTIME --> SOL["OpenAI Sol
-planning and verification"]
+    main session, planning and verification"]
     RUNTIME --> LUNA["OpenAI Luna
 recon and implementation"]
 ```
@@ -84,15 +82,15 @@ the gateway owns protocol translation, OAuth, retries, cooldown, and billing.
 
 | Role | Default model | Effort | Responsibility |
 | --- | --- | ---: | --- |
-| Main session | `gpt-6-astra` | `low` recommended; set explicitly | Plan, decide, integrate |
+| Main session | `gpt-5.6-sol` | high by default; caller override wins | Plan, decide, integrate |
 | `Explore` | `gpt-5.6-luna` | low | Broad read-only search |
 | `scout` | `gpt-5.6-luna` | low | Focused reconnaissance |
-| `plan-verifier` | `gpt-5.6-sol` | medium | Read-only Plan challenge |
+| `plan-verifier` | `gpt-5.6-sol` | high | Read-only Plan challenge |
 | `security-reviewer` | `gpt-5.6-sol` | high | Read-only security evidence |
 | `mech-executor` | `gpt-5.6-luna` | medium | Mechanical implementation |
 | `executor` | `gpt-5.6-luna` | max | Judgment-heavy implementation |
-| `verifier` | `gpt-5.6-sol` | high | Adversarial outcome verification |
-| `security-executor` | `gpt-5.6-sol` | max | Approved security implementation |
+| `verifier` | `gpt-5.6-luna` | xhigh | Adversarial outcome verification |
+| `security-executor` | `gpt-5.6-sol` | high | Approved security implementation |
 
 | Context mode | Claude binary | Client window | Use when |
 | --- | --- | ---: | --- |
@@ -214,23 +212,16 @@ compact trigger. When both sources advertise 921,000, all three compact at
 ```bash
 cd ~/src/my-project
 remora
-remora --effort low
 remora --continue
 remora -p 'summarize this repository'
 ```
 
-The example config routes the main and Opus entries to Astra; start Astra with
-`--effort low`. Unknown arguments pass through to Claude Code, including explicit
-`--model` and `--effort` overrides. An explicit `--agents` value replaces the
-remora roster. `--fallback-model` is rejected to keep automatic fallback
-disabled; content after `--` remains untouched.
-
-The [root-model smoke report](./benchmarks/astra-root-smoke/README.md) records
-one small task per configuration. Astra low was faster for direct work and
-more expensive under Standard API-equivalent pricing; the delegated sample
-was slower. This is a speed/cost choice, not a quota-saving guarantee. The
-installer preserves an existing configuration instead of replacing its model
-choices.
+The example config routes the main, Opus, and Sonnet entries to Sol and Haiku
+to Luna. remora adds `--effort high` unless the caller supplies an explicit
+`--effort` or `--effort=` override. Unknown arguments pass through to Claude
+Code. An explicit `--agents` value replaces the remora roster.
+`--fallback-model` is rejected to keep automatic fallback disabled; content
+after `--` remains untouched.
 
 Fast mode is opt-in and session-only:
 

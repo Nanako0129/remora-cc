@@ -62,7 +62,7 @@ sequenceDiagram
 
 ## Role policy
 
-The example configuration sends the main session to Astra and keeps the named role bindings unchanged. Substantial read-only fan-out and fully specified mechanical work go to Luna when their net benefit exceeds startup and synthesis cost. Small bounded repository scans stay with the main session. Independent Plan and outcome review and security work go to Sol; the bounded-judgment executor remains Luna max. `plan-verifier` and `security-reviewer` are tool-allowlisted read-only roles before approval; `verifier` retains command execution for outcome reproduction, while `security-executor` is available only for approved implementation. Subagents are leaf workers and are denied recursive delegation, preventing an unbounded agent tree.
+The example configuration sends the main session to Sol with high effort and keeps the named role bindings aligned with pilotfish-codex 1.7.1. Substantial read-only fan-out and fully specified mechanical work go to Luna when their net benefit exceeds startup and synthesis cost. Small bounded repository scans stay with the main session. Plan and security review go to Sol, while outcome verification uses Luna xhigh; the bounded-judgment executor remains Luna max. `plan-verifier` and `security-reviewer` are tool-allowlisted read-only roles before approval; `verifier` retains command execution for outcome reproduction, while `security-executor` is available only for approved implementation. Subagents are leaf workers and are denied recursive delegation, preventing an unbounded agent tree.
 
 For every existing named role, its `--agents` definition is the sole model source. The orchestrator omits the Agent tool's invocation-level `model` field because Claude Code gives that field higher precedence than the role definition. An explicit invocation model is reserved for a truly ad-hoc agent with no named definition.
 
@@ -193,11 +193,11 @@ The backend-neutral guardrails follow the shared [pilotfish orchestration policy
 
 | Decision | Chosen behavior | Rejected behavior |
 |---|---|---|
-| Main model | Astra in the example config; caller passes `--effort low` | Adding a persistent main-effort setting |
+| Main model | Sol in the example config; remora supplies configurable `--effort high` by default | Letting an omitted effort depend on the caller environment |
 | Recon | Luna, low effort | Letting built-in Explore inherit Sol |
 | Mechanical execution | Luna, medium effort | Paying Sol for deterministic bulk work |
 | Plan review | Read-only Sol `plan-verifier` | Reusing the command-capable outcome verifier before approval |
-| Verification | Fresh Sol context | Self-review by the implementer |
+| Verification | Fresh Luna `verifier`, xhigh effort | Self-review by the implementer |
 | Security | Read-only Sol review before approval; Sol execution after approval | Giving pre-approval evidence work to a write-capable role |
 | Configuration | Model names in TOML | Hard-coded provider catalog in prompts |
 | Context safety | Read the gateway ceiling, reserve output space, and scope auto-compaction to the child | Pretending every provider route has the public API's maximum window |

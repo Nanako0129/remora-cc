@@ -17,6 +17,7 @@ import re
 import stat
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,8 @@ MAX_TRANSCRIPT_BYTES = 16 * 1_048_576
 MAX_CHILDREN = 64
 MAX_SESSIONS = 128
 HOOK_TIMEOUT_SECONDS = 10
+TRANSCRIPT_SETTLE_ATTEMPTS = 20
+TRANSCRIPT_SETTLE_SECONDS = 0.05
 ENV_STATE_ROOT = "REMORA_ORCHESTRATION_STATE_ROOT"
 ENV_PROJECTS_ROOT = "REMORA_ORCHESTRATION_PROJECTS_ROOT"
 ENV_BINDINGS = "REMORA_ORCHESTRATION_ROLE_BINDINGS"
@@ -1055,16 +1058,28 @@ def _handle_subagent_stop(payload: dict[str, Any], state_root: Path, projects_ro
         or path.parent != root_path.with_suffix("") / "subagents"
     ):
         return
-    decoded = _jsonl(path, projects_root=projects_root)
-    if decoded is None:
+    decoded = None
+    observation = None
+    for attempt in range(TRANSCRIPT_SETTLE_ATTEMPTS):
+        decoded = _jsonl(path, projects_root=projects_root)
+        if decoded is not None:
+            observation = _child_observation(
+                decoded[0],
+                payload.get("last_assistant_message"),
+                agent_id=agent_id,
+                session_id=session_id,
+            )
+            if (
+                not observation["missing_model"]
+                and not observation["missing_effort"]
+                and observation["verdict"] != "MALFORMED"
+            ):
+                break
+        if attempt + 1 < TRANSCRIPT_SETTLE_ATTEMPTS:
+            time.sleep(TRANSCRIPT_SETTLE_SECONDS)
+    if decoded is None or observation is None:
         return
-    events, transcript_hash = decoded
-    observation = _child_observation(
-        events,
-        payload.get("last_assistant_message"),
-        agent_id=agent_id,
-        session_id=session_id,
-    )
+    _, transcript_hash = decoded
 
     def update(state: dict[str, Any]) -> None:
         active = state.get("active")

@@ -8,11 +8,13 @@ Disable the canonical `pilotfish@pilotfish` plugin only inside Remora sessions
 so its hook policy and namespaced agents cannot compete with Remora's roles.
 Caller settings still merge recursively and unrelated plugins remain enabled.
 
-The example configuration uses Astra for main/Opus, Sol for Sonnet, and Luna
-for Haiku. Existing user configuration and named-agent bindings are preserved;
-pass `--effort low` explicitly for the Astra speed-oriented choice. A bounded
-[smoke report](./benchmarks/astra-root-smoke/README.md) records the observed
-speed/cost trade-offs without claiming subscription-quota savings.
+Surgically reverse the model-routing portion of PR #27 while retaining its
+child-only Pilotfish plugin isolation. The example configuration uses Sol
+for main/Opus/Sonnet and Luna for Haiku. Remora supplies a configurable
+`runtime.default_effort`, defaulting to `high`; an explicit caller `--effort`
+remains authoritative. Shared role model/effort bindings now match
+pilotfish-codex 1.7.1, with Remora's extra `Explore` role mirroring `scout`.
+Existing user configuration remains preserved by the installer.
 
 Align shared policy semantics with pilotfish-codex `74ad9a7`: bounded retries
 for unavailable review services and task-ledger isolation of blocked siblings.

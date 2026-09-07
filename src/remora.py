@@ -42,6 +42,7 @@ DEFAULT_CODEX_CONTEXT_WINDOW = 272_000
 DEFAULT_CODEX_CACHE_TTL_SECONDS = 300
 DEFAULT_EFFECTIVE_CONTEXT_PERCENT = 95
 DEFAULT_AUTO_COMPACT_PERCENT = 90
+SUPPORTED_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 GPT56_LONG_CONTEXT_SLUGS = frozenset(
     {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
 )
@@ -198,6 +199,12 @@ def validate_config(config: dict[str, Any]) -> None:
         raise RemoraError(f"missing required configuration: {', '.join(missing)}")
 
     runtime = config.get("runtime", {})
+    default_effort = runtime.get("default_effort", "high")
+    if not isinstance(default_effort, str) or default_effort not in SUPPORTED_EFFORTS:
+        raise RemoraError(
+            "runtime.default_effort must be one of: "
+            + ", ".join(sorted(SUPPORTED_EFFORTS))
+        )
     apply_stream_idle_timeouts(runtime, {})
     orchestration_hooks = runtime.get("orchestration_hooks", True)
     if not isinstance(orchestration_hooks, bool):
@@ -632,6 +639,8 @@ def resolve_context_policy(
 
 def has_option(args: list[str], long_name: str, short_name: str | None = None) -> bool:
     for arg in args:
+        if arg == "--":
+            break
         if arg == long_name or arg.startswith(f"{long_name}="):
             return True
         if short_name and arg == short_name:
@@ -1206,6 +1215,12 @@ def build_launch(
         )
 
     runtime = config.get("runtime", {})
+    default_effort = runtime.get("default_effort", "high")
+    if not isinstance(default_effort, str) or default_effort not in SUPPORTED_EFFORTS:
+        raise RemoraError(
+            "runtime.default_effort must be one of: "
+            + ", ".join(sorted(SUPPORTED_EFFORTS))
+        )
     models = config["models"]
     proxy = config["proxy"]
     claude_bin = str(runtime.get("claude_binary", "claude")).strip() or "claude"
@@ -1226,10 +1241,15 @@ def build_launch(
     except (TypeError, ValueError) as exc:
         raise RemoraError("--settings must contain valid finite JSON values") from exc
 
+    option_scan_args = omit_option_values(
+        args, {"--append-system-prompt", "--append-system-prompt-file"}
+    )
     prefix: list[str] = ["--settings", serialized_settings]
-    if not has_option(args, "--model", "-m"):
+    if not has_option(option_scan_args, "--model", "-m"):
         prefix.extend(["--model", str(models["main"])])
-    if not has_option(args, "--agents"):
+    if not has_option(option_scan_args, "--effort"):
+        prefix.extend(["--effort", default_effort])
+    if not has_option(option_scan_args, "--agents"):
         compact = json.dumps(render_agents(config), ensure_ascii=False, separators=(",", ":"))
         prefix.extend(["--agents", compact])
 

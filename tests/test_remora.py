@@ -617,7 +617,8 @@ class RemoraTests(unittest.TestCase):
         )
         self.assertIn("introduced P2 regressions remain blocking", architecture)
         self.assertIn("Risk-triggered completed-work outcome verification runs", architecture)
-        self.assertIn("stops resubmitting, dispositions every blocker", architecture)
+        self.assertIn("stops automatic resubmission and dispositions every blocker", architecture)
+        self.assertIn("one final fresh readiness pass", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -648,13 +649,14 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("tracked per stable readiness-unit ID, not across the whole program", policy)
         self.assertIn("after each `REVISE`", policy)
         self.assertIn("must use a fresh `plan-verifier`", policy)
-        self.assertIn("After two automatic `REVISE` verdicts in one readiness-unit epoch, stop resubmitting", policy)
+        self.assertIn("After two automatic `REVISE` verdicts in one readiness-unit epoch, stop automatic resubmission", policy)
         self.assertIn("disposition every blocker as `FIX`, `DEFER`, or `REJECT`", policy)
         self.assertIn("Ask the user only for unresolved P0/P1", policy)
         self.assertIn("The cap is not `READY`", policy)
         self.assertIn("user-directed continuation remains allowed", policy)
         self.assertIn("not the default recommendation", policy)
-        self.assertNotIn("may receive exactly one final fresh `plan-verifier` pass", policy)
+        self.assertIn("may receive exactly one final fresh `plan-verifier` pass", policy)
+        self.assertIn("pause or escalate the unit", policy)
         self.assertIn("Do not resubmit a substantially unchanged Plan", policy)
         self.assertIn("A `READY` slice may be presented for explicit approval and executed while unrelated or later slices remain in planning", policy)
         self.assertIn("review only the next executable slice by default", policy)
@@ -786,15 +788,19 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("use the main-session `FIX`/`DEFER`/`REJECT` disposition", policy)
         self.assertIn("Ask only for an unresolved P0/P1", policy)
         self.assertIn("never treat the budget cap as `READY`", policy)
-        self.assertNotIn("exactly one final readiness pass", policy)
+        self.assertIn("one final fresh readiness pass", policy)
         for path in (
             ROOT / "README.md",
             ROOT / "README.zh-TW.md",
             ROOT / "docs" / "architecture.md",
         ):
             text = path.read_text(encoding="utf-8")
-            self.assertNotIn("one final fresh `plan-verifier` pass", text)
-            self.assertNotIn("exactly one final readiness pass", text)
+            if path.name == "README.md":
+                self.assertIn("one final fresh review", text)
+            elif path.name == "README.zh-TW.md":
+                self.assertIn("一次最後的 fresh review", text)
+            else:
+                self.assertIn("one final fresh readiness pass", text)
         runbook = (ROOT / "install" / "AGENT-INSTALL.md").read_text(encoding="utf-8")
         self.assertIn(
             "when the independent-review trigger applies, gates the stable-ID program envelope",

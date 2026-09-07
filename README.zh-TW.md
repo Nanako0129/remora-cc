@@ -41,8 +41,9 @@ orchestration 啟動 Claude Code。Astra 負責 main session，Sol 負責規劃�
 大型 Plan 以 program envelope 加上可獨立批准的 execution slices 組成。
 只有安全、不可逆／外部動作、資料、release 或跨元件 acceptance 的具體風險
 才觸發獨立 review；「non-trivial」本身不算。兩次自動 `REVISE` 後，主
-session 會停止重送，將每項 finding 判為 `FIX`、`DEFER` 或 `REJECT`，
-只把未解決的高影響、產品或授權決策交給使用者。完整規則放在
+session 會停止自動重送，將每項 finding 判為 `FIX`、`DEFER` 或 `REJECT`。
+實質變更過的 unit 可再接受一次最後的 fresh review；若仍是 `REVISE`，
+就暫停或升級處理。完整規則放在
 [架構文件](./docs/architecture.md#role-policy)。
 
 Intent routing 會依請求選擇 `execute`（清楚且有界）、`explore_then_plan`

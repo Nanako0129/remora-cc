@@ -15,8 +15,9 @@ pass `--effort low` explicitly for the Astra speed-oriented choice. A bounded
 speed/cost trade-offs without claiming subscription-quota savings.
 
 Align shared policy semantics with pilotfish-codex `74ad9a7`: bounded retries
-for unavailable review services, task-ledger isolation of blocked siblings,
-and no automatic extra readiness pass after two `REVISE` verdicts. When the
+for unavailable review services and task-ledger isolation of blocked siblings.
+After two `REVISE` verdicts, one materially changed unit may receive one final
+fresh readiness pass before it must pause or escalate. When the
 `baton-dispatch` skill is listed, large or genuinely separable work now invokes
 it once before topology selection; Baton may still choose direct work. Claude's
 native background transport and existing approval boundaries remain intact.

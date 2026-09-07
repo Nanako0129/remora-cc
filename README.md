@@ -43,9 +43,9 @@ Large Plans use a program envelope followed by independently approvable
 execution slices. Concrete security, irreversible/external, data, release, or
 cross-component acceptance risk triggers independent review; “non-trivial”
 alone does not. After two automatic `REVISE` verdicts, the main session stops
-resubmitting, dispositions each blocker as `FIX`, `DEFER`, or `REJECT`, and
-asks only for unresolved high-impact or product and authority decisions. The
-complete contract belongs in
+automatic resubmission and dispositions each blocker as `FIX`, `DEFER`, or
+`REJECT`. One materially changed unit may receive one final fresh review;
+another `REVISE` pauses or escalates it. The complete contract belongs in
 [the architecture document](./docs/architecture.md#role-policy).
 
 Intent routing uses `execute` for clear bounded work, `explore_then_plan` for

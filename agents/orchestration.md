@@ -67,6 +67,23 @@ unavailable optional consumers never weaken mandatory controls.
 mandatory security/risk/approval/review gates > explicit current-turn review_intent > optional/default routing
 ```
 
+#### Semantic adjudication contract
+
+`automatic_plan_review` and `semantic_adjudication` are separate request modes.
+For `semantic_adjudication`, give the read-only `plan-verifier` exactly two
+anonymous Luna verdicts over the same input fingerprint. It resolves only their
+semantic disagreement from evidence already present in that input. It must not
+repair missing evidence, adjudicate deterministic probe conflicts, create a
+second adjudicator, or change the fingerprint.
+
+The adjudicator returns the existing machine-readable readiness payload: bare
+`READY` or structured `REVISE` with `Blocker:`, `Evidence:`, `Minimum revision:`,
+and `Acceptance check:`. Preserve the fingerprint in the surrounding request and
+tracked receipt metadata rather than decorating that verdict. A
+`semantic_adjudication` result cannot satisfy the `automatic_plan_review`
+readiness gate, grant approval, or authorize execution. This is a policy
+contract only; Remora does not add a scheduler, parser, gate, or receipt runtime.
+
 Record these logical route signals in the internal decision:
 
 - `task_mode`: `execute`, `explore_then_plan`, or `co_discover`.
@@ -112,6 +129,41 @@ the next reversible slice. If `AskUserQuestion` is unavailable, emit
 recommendation, and the exact resume point. A decision card is a user
 checkpoint, not a replacement for the internal Plan or an approval bypass.
 
+#### General-mode decision checkpoint contract
+
+When a task decomposition, blocker disposition, risk, permission boundary, or
+acceptance choice can change the outcome, create one internal decision card and
+ask one high-level question before continuing the affected task. This remains
+General mode, not a Plan-mode questionnaire. Ordinary low-risk ambiguity uses a
+reasonable local default. A material card offers exactly two or three mutually
+exclusive options and identifies the recommendation.
+
+The internal card follows the `pilotfish-decision-checkpoint-v1` contract and
+contains exactly `checkpoint_id`, `scope`,
+`current_interpretation`, `impact`, `recommended_option`, `options`,
+`excluded_scope`, `affected_task_ids`, `resume_point`, and `approval_boundary`.
+Each option contains exactly `id`, `label`, and `effect`. Keep
+`affected_task_ids` to the smallest set whose next result can change, and exclude
+completed or independent siblings. `excluded_scope` states what the answer
+cannot authorize; credentials, external writes, destructive work, release, and
+irreversible work never enter the card's implied authorization.
+
+Render only the one question and supported option `label`/description fields
+through Claude Code's actual `AskUserQuestion` schema. Keep the contract tag,
+identifiers, scope, and resume metadata in the main session's internal record;
+never fabricate unsupported tool arguments. If the tool is unavailable, retain
+the pending record and use the `PAUSED_NEEDS_USER` text fallback above.
+
+Resolve replies conservatively: an exact option number or `id` confirms only
+that option. An explicit rejection keeps the affected tasks pending or blocked.
+Every other, multiple, quoted, or ambiguous reply remains pending and requires
+one concise clarification; never treat plausible free text as approval. A
+confirmed reply produces a resume record containing the checkpoint id, selected
+option, affected task ids, and exact resume point. Preserve the task ledger and
+continue only within that record's scope and existing authorization. Even
+unambiguous authorized user intent remains subject to higher-priority host
+instructions and cannot broaden the recorded approval boundary.
+
 For large, ambiguous, architectural, risky, or explicitly plan-first work, use this lifecycle:
 
 | Phase | Gate | Eligible delegation |
@@ -120,7 +172,7 @@ For large, ambiguous, architectural, risky, or explicitly plan-first work, use t
 | Plan | The main session synthesizes one Plan containing outcome, non-goals, scope, dependencies, exclusive ownership, sequence, verification, budgets, and stop conditions. | When the independent-review trigger below applies, a fresh, tool-enforced read-only `plan-verifier` applies the bounded readiness contract; the main session owns every revision and the final synthesis. |
 | Approval | For large, architectural, risky, or explicitly plan-first work, present the Plan and wait for explicit user approval. A broad initial request is not approval of a Plan the user has not seen. | Read-only clarification only. Do not send an implementation brief or edit source before required approval. |
 | Execution | The approved or otherwise authorized contract has stable scope, exclusive ownership, constraints, done criteria, integration, and verification. | `mech-executor` for fully specified repetition, `executor` for bounded local judgment, and `security-executor` for security-sensitive work. |
-| Verification | The integrated result is concrete enough to test as an exact completed-work claim with acceptance criteria. | When the independent-review trigger applies, a fresh `verifier` returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. |
+| Verification | The integrated result is concrete enough to test as an exact completed-work claim with acceptance criteria. | When the independent-review trigger applies, a fresh `verifier` returns `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` for `outcome_verification`; an explicit `direction_checkpoint` uses its separate direction vocabulary. |
 
 Independent review is risk-triggered, not a synonym for non-trivial. Use it when the user requests it or the claim crosses a security or trust boundary, destructive, irreversible, or external mutation, a data, schema, serialization, migration, or release boundary, or a material cross-component interaction in acceptance. File count, model concern, routine docs or UI work, and a bounded fail-soft bug alone do not trigger it. Plan readiness evaluates the proposed acceptance check; risk-triggered completed-work outcome verification exercises the primary user-visible flow against acceptance before adversarial review, and review never substitutes for that evidence.
 
@@ -204,21 +256,23 @@ For any program envelope or slice involving authentication, authorization, crede
 At a stable slice boundary, the existing `verifier` may receive an explicit
 `direction_checkpoint` contract containing the original outcome,
 non-negotiable constraints, current slice acceptance, latest verified good
-checkpoint, current evidence, and proposed next slice or path. The top-level verifier verdict remains
-exactly `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`:
+checkpoint, current evidence, and proposed next slice or path. Return exactly one
+direction disposition:
 
-- `CONFIRMED` means no reproducible P0-P2 finding blocks the current path and
-  requires advisory `Direction: CONTINUE`.
-- `REFUTED` means a reproducible P0-P2 finding blocks the current path and
-  requires advisory `Direction: PIVOT` when the outcome remains valid but the
-  path or assumption must change, or `Direction: ROLLBACK` when an invariant or
-  acceptance condition is broken. `ROLLBACK` identifies the latest verified
-  good checkpoint.
-- `INCONCLUSIVE` means required input or evidence is insufficient.
-  `INCONCLUSIVE` cannot advance; no Direction line can override it.
+- `CONTINUE` when the evidence supports the original outcome and next slice.
+- `PIVOT` when the outcome remains valid but evidence contradicts the current
+  path or assumption; preserve useful evidence and require a bounded re-plan.
+- `ROLLBACK` when an invariant or acceptance condition is broken; stop new
+  writes and identify the latest verified good checkpoint.
+- `INCONCLUSIVE` when required input or evidence cannot distinguish those
+  dispositions. State the missing evidence and retry condition; do not advance.
 
-Direction remains advisory beneath the verdict and cannot satisfy outcome
-verification, Plan readiness, or approval.
+Do not claim `ROLLBACK` when the target is unavailable or the relevant external
+action is irreversible. Report the limitation and required containment or user
+decision instead. These direction-only dispositions cannot satisfy
+`outcome_verification`, Plan readiness, or approval. The separate
+`outcome_verification` contract remains unchanged and returns only `CONFIRMED`,
+`REFUTED`, or `INCONCLUSIVE`.
 
 ## Continuation across user input
 

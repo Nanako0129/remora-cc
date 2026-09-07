@@ -90,7 +90,15 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("plan-verifier", payload)
         self.assertIn("security-reviewer", payload)
         self.assertNotIn("_routing_fallback", payload["plan-verifier"])
+        self.assertIn("exactly two anonymous Luna verdicts", payload["plan-verifier"]["prompt"])
+        self.assertIn("cannot satisfy automatic_plan_review readiness", payload["plan-verifier"]["prompt"])
+        self.assertIn("Return exactly one disposition", payload["verifier"]["prompt"])
+        self.assertIn("Do not claim ROLLBACK when the target is unavailable", payload["verifier"]["prompt"])
+        for field in ("affected unit ID", "explicit evidence gap", "minimum remediation", "acceptance check"):
+            self.assertIn(field, payload["security-reviewer"]["prompt"])
         policy = command[command.index("--append-system-prompt") + 1]
+        self.assertIn("pilotfish-decision-checkpoint-v1", policy)
+        self.assertIn("contains exactly `checkpoint_id`", policy)
         self.assertIn("run_in_background: true", policy)
         self.assertIn("launch every eligible delegation", policy)
         self.assertIn("instead of switching that delegation to foreground execution", policy)
@@ -375,7 +383,7 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("Remora emits no\n`codex-auto-review` signal", policy)
         self.assertNotIn("owns optional review scheduler", policy)
 
-    def test_policy_route_signals_budgets_decision_card_and_direction_contract(self) -> None:
+    def test_policy_route_signals_budgets_and_decision_checkpoint_contract(self) -> None:
         policy = remora.load_orchestration_policy()
         for signal in (
             "`task_mode`", "`intent_confidence`", "`change_impact`", "`reversible`",
@@ -389,11 +397,26 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("do not substitute a plain-text question", policy)
         self.assertIn("If `AskUserQuestion` is unavailable, emit\n`PAUSED_NEEDS_USER`", policy)
         self.assertNotIn("show a concise AskUserQuestion-style decision card", policy)
-        self.assertIn("top-level verifier verdict remains\nexactly `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`", policy)
-        self.assertIn("requires advisory `Direction: CONTINUE`", policy)
-        self.assertIn("requires advisory `Direction: PIVOT`", policy)
-        self.assertIn("or `Direction: ROLLBACK`", policy)
-        self.assertIn("`INCONCLUSIVE` cannot advance", policy)
+        checkpoint = policy.split("#### General-mode decision checkpoint contract", 1)[1].split(
+            "For large, ambiguous, architectural", 1
+        )[0]
+        self.assertIn("pilotfish-decision-checkpoint-v1", checkpoint)
+        self.assertIn("contains exactly", checkpoint)
+        for field in (
+            "checkpoint_id", "scope", "current_interpretation", "impact",
+            "recommended_option", "options", "excluded_scope", "affected_task_ids",
+            "resume_point", "approval_boundary",
+        ):
+            self.assertIn(f"`{field}`", checkpoint)
+        self.assertIn("Each option contains exactly `id`, `label`, and `effect`", checkpoint)
+        self.assertIn("exactly two or three mutually\nexclusive options", checkpoint)
+        self.assertIn("never fabricate unsupported tool arguments", checkpoint)
+        self.assertIn("exact option number or `id` confirms only\nthat option", checkpoint)
+        self.assertIn("explicit rejection keeps the affected tasks pending or blocked", checkpoint)
+        self.assertIn("multiple, quoted, or ambiguous reply remains pending", checkpoint)
+        self.assertIn("never treat plausible free text as approval", checkpoint)
+        self.assertIn("confirmed reply produces a resume record", checkpoint)
+        self.assertIn("continue only within that record's scope and existing authorization", checkpoint)
 
     def test_security_review_requires_named_roles_and_fix_disposition(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -408,6 +431,8 @@ class RemoraTests(unittest.TestCase):
         reviewer = remora.load_agent_definitions()["security-reviewer"]
         verifier = remora.load_agent_definitions()["plan-verifier"]
         self.assertIn("Never execute commands", reviewer["prompt"])
+        for field in ("affected unit ID", "explicit evidence gap", "minimum remediation", "acceptance check"):
+            self.assertIn(field, reviewer["prompt"])
         self.assertEqual(reviewer["tools"], ["Read", "Glob", "Grep", "WebSearch", "WebFetch"])
         self.assertEqual(verifier["tools"], ["Read", "Glob", "Grep"])
 
@@ -424,21 +449,24 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("do not emit `PAUSED_NEEDS_USER` while runnable tasks remain", policy)
         self.assertIn("When only blocked tasks remain", policy)
 
-    def test_direction_checkpoint_keeps_outcome_verdict_top_level(self) -> None:
+    def test_direction_checkpoint_has_separate_dispositions_and_rollback_limits(self) -> None:
         prompt = remora.load_agent_definitions()["verifier"]["prompt"]
         self.assertIn("exactly one contract", prompt)
         self.assertIn("original outcome, non-negotiable constraints, current slice acceptance", prompt)
         self.assertIn("latest verified good checkpoint", prompt)
-        self.assertIn("CONFIRMED means no reproducible P0-P2 finding blocks", prompt)
-        self.assertIn("requires advisory Direction: CONTINUE", prompt)
-        self.assertIn("REFUTED means a reproducible P0-P2 finding blocks", prompt)
-        self.assertIn("Direction: PIVOT", prompt)
-        self.assertIn("Direction: ROLLBACK", prompt)
-        self.assertIn("INCONCLUSIVE means required input or evidence is insufficient", prompt)
+        self.assertIn("Return exactly one disposition", prompt)
+        for disposition in ("CONTINUE", "PIVOT", "ROLLBACK", "INCONCLUSIVE"):
+            self.assertIn(disposition, prompt)
+        self.assertIn("when required input or evidence cannot distinguish those dispositions", prompt)
+        self.assertIn("Do not claim ROLLBACK when the target is unavailable", prompt)
+        self.assertIn("relevant external action is irreversible", prompt)
+        self.assertIn("required containment or user decision", prompt)
+        self.assertIn("A direction disposition is never outcome evidence, Plan readiness, or approval", prompt)
         self.assertIn("Never return READY or REVISE", prompt)
         architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-        self.assertIn("A required `Direction:", architecture)
-        self.assertIn("line for `CONFIRMED` or `REFUTED` remains advisory", architecture)
+        self.assertIn("returns exactly `CONTINUE`, `PIVOT`,\n`ROLLBACK`, or `INCONCLUSIVE`", architecture)
+        self.assertIn("`outcome_verification` keeps its\nexisting `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` vocabulary", architecture)
+        self.assertIn("cannot describe an irreversible external action", architecture)
 
     def test_policy_preserves_unfinished_objectives_across_user_input(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -492,13 +520,40 @@ class RemoraTests(unittest.TestCase):
         for field in ("Blocker:", "Evidence:", "Minimum revision:", "Acceptance check:"):
             self.assertIn(field, plan_verifier["prompt"])
         self.assertEqual(plan_verifier["tools"], ["Read", "Glob", "Grep"])
-        self.assertNotIn("Plan readiness", verifier["prompt"])
+        self.assertIn("A direction disposition is never outcome evidence, Plan readiness, or approval", verifier["prompt"])
+        self.assertNotIn("Return exactly the bare word READY", verifier["prompt"])
         self.assertIn("CONFIRMED when", verifier["prompt"])
         self.assertIn("REFUTED only when", verifier["prompt"])
         self.assertIn("or INCONCLUSIVE when", verifier["prompt"])
         self.assertIn("never return ready or revise", verifier["prompt"].lower())
         self.assertIn("Write", verifier["disallowedTools"])
         self.assertIn("Agent", verifier["disallowedTools"])
+
+    def test_semantic_adjudication_is_read_only_and_cannot_launder_readiness(self) -> None:
+        policy = remora.load_orchestration_policy()
+        plan_verifier = remora.load_agent_definitions()["plan-verifier"]
+        adjudication = policy.split("#### Semantic adjudication contract", 1)[1].split(
+            "Record these logical route signals", 1
+        )[0]
+
+        self.assertIn("exactly two\nanonymous Luna verdicts over the same input fingerprint", adjudication)
+        self.assertIn("resolves only their\nsemantic disagreement", adjudication)
+        self.assertIn("must not\nrepair missing evidence", adjudication)
+        self.assertIn("adjudicate deterministic probe conflicts", adjudication)
+        self.assertIn("bare\n`READY` or structured `REVISE`", adjudication)
+        self.assertIn("fingerprint in the surrounding request and\ntracked receipt metadata", adjudication)
+        self.assertIn("cannot satisfy the `automatic_plan_review`\nreadiness gate", adjudication)
+        self.assertIn("does not add a scheduler, parser, gate, or receipt runtime", adjudication)
+        for phrase in (
+            "exactly two anonymous Luna verdicts for the same input fingerprint",
+            "Resolve only their semantic disagreement",
+            "Do not repair missing evidence",
+            "deterministic probe conflicts",
+            "same bare READY or structured four-field REVISE payload",
+            "cannot satisfy automatic_plan_review readiness",
+        ):
+            self.assertIn(phrase, plan_verifier["prompt"])
+        self.assertEqual(plan_verifier["tools"], ["Read", "Glob", "Grep"])
 
     def test_outcome_verifier_and_recovery_contract(self) -> None:
         prompt = remora.load_agent_definitions()["verifier"]["prompt"]

@@ -90,6 +90,15 @@ plain text cannot substitute for that call. If the tool is unavailable, the
 policy fails closed with `PAUSED_NEEDS_USER`, one concise question and choices,
 a recommendation, and the exact resume point.
 
+The internal card follows `pilotfish-decision-checkpoint-v1` and contains exactly
+`checkpoint_id`, `scope`, `current_interpretation`, `impact`,
+`recommended_option`, two or three `options`, `excluded_scope`,
+`affected_task_ids`, `resume_point`, and `approval_boundary`. Each option has an
+`id`, `label`, and concrete `effect`. Claude's card receives only supported
+question and option fields; the full record stays internal. Exact option numbers
+or ids resume only the affected tasks, while rejection or ambiguous free text
+keeps them pending.
+
 `review_intent` is turn-scoped and independent of `task_mode`: clear explicit
 `fast`, `default`, or `strict` cues are accepted, while ambiguous, quoted,
 negated, conflicting, and vague cues use `default`. Mandatory security, risk,
@@ -99,13 +108,22 @@ the primary path and may use a read-only same-fingerprint
 `semantic_adjudication` only when that capability already exists. remora emits no optional auto-review signal or
 scheduler and never uses a write-capable executor as a reviewer.
 
-At a `direction_checkpoint`, the top-level outcome remains exactly
-`CONFIRMED`, `REFUTED`, or `INCONCLUSIVE`. A required `Direction:
-CONTINUE|PIVOT|ROLLBACK` line for `CONFIRMED` or `REFUTED` remains advisory in
-authority: `CONFIRMED` maps to an
-unblocked `CONTINUE`, while a reproducible P0-P2 `REFUTED` maps to `PIVOT` or
-`ROLLBACK`. `INCONCLUSIVE` cannot advance. This route and checkpoint contract
-is policy guidance, not deterministic runtime enforcement.
+`semantic_adjudication` gives the read-only `plan-verifier` exactly two anonymous
+Luna verdicts for one input fingerprint and resolves only their semantic
+disagreement. It neither repairs missing evidence nor resolves deterministic
+probe conflicts. The existing bare `READY` or structured `REVISE` payload remains
+unchanged, and the fingerprint stays in surrounding metadata. Adjudication
+cannot satisfy `automatic_plan_review`, approval, or execution; this policy change adds
+no scheduler, parser, gate, or receipt runtime.
+
+At a `direction_checkpoint`, the verifier returns exactly `CONTINUE`, `PIVOT`,
+`ROLLBACK`, or `INCONCLUSIVE`. These direction-only dispositions cannot satisfy
+outcome verification, readiness, or approval; `outcome_verification` keeps its
+existing `CONFIRMED`, `REFUTED`, or `INCONCLUSIVE` vocabulary. Insufficient
+evidence is `INCONCLUSIVE`. `ROLLBACK` requires an available verified target and
+cannot describe an irreversible external action; the verifier reports the
+limitation and required containment or user decision instead. This contract is
+policy guidance, not deterministic runtime enforcement.
 
 Plan and outcome verification use deliberately different roles, capabilities, and vocabularies. Independent review is triggered by concrete security, irreversible or external, data, migration, release, or cross-component acceptance risk, not by file count or “non-trivial” alone. Large work still uses a program envelope plus independently approvable slices, but only triggered units require `READY`. `REVISE` returns all known claim-relevant P0-P2 blockers in one pass; P3/P4, optional detail, and adjacent hardening do not block. After two automatic revisions, the main session stops automatic resubmission and dispositions every blocker as `FIX`, `DEFER`, or `REJECT`. One materially changed unit may receive one final fresh readiness pass; another `REVISE` pauses or escalates it. Independent slices continue. User input is reserved for unresolved P0/P1, product or authority choices, or an original scope that can no longer be met. `READY` remains readiness evidence rather than approval, and security-sensitive units still complete read-only `security-reviewer` evidence before readiness.
 

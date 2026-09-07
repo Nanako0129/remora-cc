@@ -1,10 +1,10 @@
 # remora
 
-> 在單一 session 中，讓 Claude Code 使用兼顧成本的 GPT-5.6 agent fleet。
+> 在單一 session 中，讓 Claude Code 使用兼顧成本的 OpenAI agent fleet。
 
 **remora** 以 session-scoped OpenAI model routing、角色 agents 與
-orchestration 啟動 Claude Code。Sol 負責規劃與關鍵審查，Luna 負責成本較低的
-探索與實作，Terra 則是平衡的互動選項。Child session 結束後，所有 override
+orchestration 啟動 Claude Code。Astra 負責 main session，Sol 負責規劃與關鍵
+審查，Luna 負責成本較低的探索與實作。Child session 結束後，所有 override
 都會消失。
 
 [English](./README.md)
@@ -33,6 +33,7 @@ orchestration 啟動 Claude Code。Sol 負責規劃與關鍵審查，Luna 負責
 | 認證 | 既有 Anthropic login | Child-only gateway token |
 | Settings | 原本的 Claude hierarchy | Session routing 與可選的 caller settings 合併 |
 | Agents | 既有 project／user／plugin agents | 完整八角色 session roster |
+| Canonical Pilotfish plugin | 原本的 Claude hierarchy | 停用 `pilotfish@pilotfish` |
 | Model fallback | 原本行為 | 停用自動 fallback |
 | `~/.claude` 內的檔案 | 不變 | 永不寫入 |
 | Runtime marker | 無 | 只在 child 設定 `REMORA_ACTIVE=1` |
@@ -40,8 +41,9 @@ orchestration 啟動 Claude Code。Sol 負責規劃與關鍵審查，Luna 負責
 大型 Plan 以 program envelope 加上可獨立批准的 execution slices 組成。
 只有安全、不可逆／外部動作、資料、release 或跨元件 acceptance 的具體風險
 才觸發獨立 review；「non-trivial」本身不算。兩次自動 `REVISE` 後，主
-session 會停止重送，將每項 finding 判為 `FIX`、`DEFER` 或 `REJECT`，
-只把未解決的高影響、產品或授權決策交給使用者。完整規則放在
+session 會停止自動重送，將每項 finding 判為 `FIX`、`DEFER` 或 `REJECT`。
+實質變更過的 unit 可再接受一次最後的 fresh review；若仍是 `REVISE`，
+就暫停或升級處理。完整規則放在
 [架構文件](./docs/architecture.md#role-policy)。
 
 Intent routing 會依請求選擇 `execute`（清楚且有界）、`explore_then_plan`
@@ -64,12 +66,12 @@ flowchart LR
     USER -->|remora| LAUNCHER["remora launcher"]
     LAUNCHER -->|child-only environment| GATEWAY["Anthropic-compatible gateway"]
     LAUNCHER -->|session agents 與 policy| RUNTIME["Claude Code runtime"]
+    RUNTIME --> ASTRA["OpenAI Astra
+    main session"]
     RUNTIME --> SOL["OpenAI Sol
 規劃與驗證"]
     RUNTIME --> LUNA["OpenAI Luna
 探索與實作"]
-    RUNTIME --> TERRA["OpenAI Terra
-平衡互動"]
 ```
 
 remora 是 launcher，不是 proxy。你需要自備 Anthropic
@@ -79,7 +81,7 @@ translation、OAuth、retry、cooldown 與 billing 都由 gateway 負責。
 
 | 角色 | 預設模型 | Effort | 責任 |
 | --- | --- | ---: | --- |
-| Main session | `gpt-5.6-sol` | 使用者指定 | 規劃、決策、整合 |
+| Main session | `gpt-6-astra` | 建議明確傳入 `low` | 規劃、決策、整合 |
 | `Explore` | `gpt-5.6-luna` | low | 廣域唯讀搜尋 |
 | `scout` | `gpt-5.6-luna` | low | 聚焦偵察 |
 | `plan-verifier` | `gpt-5.6-sol` | medium | 唯讀 Plan 挑戰 |
@@ -99,6 +101,7 @@ Runtime 行為與參考文件：
 | 主題 | 契約 | 參考文件 |
 | --- | --- | --- |
 | Caller settings | 遞迴合併；remora-owned keys 保持 authoritative | [Isolation contract](./docs/architecture.md#isolation-contract) |
+| Pilotfish plugin | 只在 child session 停用精確 canonical id | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | 注入 `fallbackModel: []`；拒絕 CLI `--fallback-model` | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` 依序合成 caller 與 remora policy | [Role policy](./docs/architecture.md#role-policy) |
 | Context 與 Calico | Metadata 過期或不一致時 fail closed | [CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊) |
@@ -203,13 +206,20 @@ auth_token_command = [
 ```bash
 cd ~/src/my-project
 remora
+remora --effort low
 remora --continue
 remora -p 'summarize this repository'
 ```
 
-未知參數會原樣交給 Claude Code。明確的 `--model` 或 `--agents` 只會取代
-對應的 remora default。`--fallback-model` 會被拒絕，以維持停用自動
-fallback；`--` 後的內容完全不動。
+範例設定會把 main 與 Opus 入口導向 Astra；使用 Astra 時請傳入
+`--effort low`。未知參數會原樣交給 Claude Code，包括明確的 `--model` 與
+`--effort` override。明確的 `--agents` 會取代 remora roster。
+`--fallback-model` 會被拒絕，以維持停用自動 fallback；`--` 後的內容完全不動。
+
+[主模型實測報告](./benchmarks/astra-root-smoke/README.md) 每組只有一個小任務。
+Astra low 的直接執行較快，但 Standard API 等值成本較高；委派樣本則較慢。
+這是速度與成本的取捨，沒有證明能節省訂閱額度。安裝器會保留既有設定，
+不會自動替換其中的模型選擇。
 
 Fast 模式是 opt-in 且只作用於目前 session：
 
@@ -238,6 +248,11 @@ claude --version
 
 第一個指令應顯示 OpenAI role map；第二個仍是原生 Claude Code。需要檔案級
 證據時，可比較安裝前後的 `~/.claude` SHA-256 manifest。
+
+remora 只在 child session 強制停用一般安裝的 `pilotfish@pilotfish`，並保留
+其他 plugin flag。Managed policy 的優先權更高，仍可強制啟用；若有效 session
+仍顯示 Pilotfish 已啟用，請停止需要隔離的執行。其他 plugin id 與明確的
+custom plugin directory 不在此保證範圍內。
 
 | 邊界 | 實際約束 |
 | --- | --- |
@@ -292,7 +307,9 @@ claude --version
 remora 將 [pilotfish](https://github.com/Nanako0129/pilotfish) 的 role-based
 orchestration pattern 包裝成 session launcher，也能與
 [Baton](https://github.com/cablate/baton) 這類 optional delegation planning
-合成；它不宣稱發明 multi-agent routing。
+合成。當 session 列出這個 skill 時，大型或可明確拆分的工作會先呼叫一次，
+讓 Baton 選擇最小 topology；Baton 仍可判定由 main session 直接完成。
+remora 不宣稱發明 multi-agent routing。
 
 ## License
 

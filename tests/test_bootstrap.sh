@@ -86,7 +86,7 @@ test -L "$TMP/home/.local/bin/remora"
 test -f "$TMP/home/.config/remora-cc/config.toml"
 test "$(HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config" "$TMP/home/.local/bin/remora" version)" = "remora $VERSION"
 grep -Fq 'Blocker:' "$TMP/home/.local/share/remora-cc/agents/agents.json"
-grep -Fq 'After two automatic `REVISE` verdicts in one readiness-unit epoch, stop resubmitting' \
+grep -Fq 'After two automatic `REVISE` verdicts in one readiness-unit epoch, stop automatic resubmission' \
   "$TMP/home/.local/share/remora-cc/agents/orchestration.md"
 test "$(find "$TMP/home/.claude" -type f -print | sort)" = "$TMP/home/.claude/settings.json"
 

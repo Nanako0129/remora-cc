@@ -8,9 +8,9 @@ auth_token_env = "REMORA_AUTH_TOKEN"
 auth_token_command = []
 
 [models]
-main = "gpt-5.6-sol"
-default_opus = "gpt-5.6-sol"
-default_sonnet = "gpt-5.6-terra"
+main = "gpt-6-astra"
+default_opus = "gpt-6-astra"
+default_sonnet = "gpt-5.6-sol"
 default_haiku = "gpt-5.6-luna"
 
 [context]

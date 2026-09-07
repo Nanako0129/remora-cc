@@ -65,22 +65,25 @@ class RemoraTests(unittest.TestCase):
             remora,
             "fetch_gateway_context_windows",
             return_value={
+                "gpt-6-astra": 372000,
                 "gpt-5.6-sol": 372000,
-                "gpt-5.6-terra": 372000,
                 "gpt-5.6-luna": 372000,
             },
         ):
             command, env = remora.build_launch(self.config, ["--continue"])
         self.assertEqual(command[0], "claude")
-        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-sol")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-6-astra")
         self.assertTrue(command[command.index("--settings") + 1].startswith("{"))
         settings = launch_settings(command)
         self.assertEqual(settings["fallbackModel"], [])
         self.assertEqual(
             settings["availableModels"],
-            ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
+            ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"],
         )
-        self.assertEqual(env["ANTHROPIC_DEFAULT_SONNET_MODEL"], "gpt-5.6-terra")
+        self.assertEqual(
+            settings["enabledPlugins"], {"pilotfish@pilotfish": False}
+        )
+        self.assertEqual(env["ANTHROPIC_DEFAULT_SONNET_MODEL"], "gpt-5.6-sol")
         self.assertIn("--agents", command)
         payload = json.loads(command[command.index("--agents") + 1])
         self.assertEqual(payload["scout"]["model"], "gpt-5.6-luna")
@@ -324,9 +327,11 @@ class RemoraTests(unittest.TestCase):
 
     def test_policy_composes_with_delegation_planning_skills(self) -> None:
         policy = remora.load_orchestration_policy()
-        self.assertIn("delegation-planning skill such as Baton", policy)
-        self.assertIn("may shape discovery questions", policy)
-        self.assertIn("execution topology", policy)
+        self.assertIn("inspect the\nsession's available skills", policy)
+        self.assertIn("If `baton-dispatch` is listed", policy)
+        self.assertIn("invoke it\nonce to choose the smallest topology", policy)
+        self.assertIn("Baton may still select direct work", policy)
+        self.assertIn("If the\nskill is unavailable, apply this policy directly", policy)
         self.assertIn("This policy remains the source", policy)
         self.assertIn("named roles", policy)
         self.assertIn("model routing", policy)
@@ -396,14 +401,28 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("must call the\nactual named-role `plan-verifier`", policy)
         self.assertIn("call the actual named-role `security-reviewer` first", policy)
         self.assertIn("before calling the actual named-role `plan-verifier`", policy)
-        self.assertIn("If either named role is unavailable, pause and report", policy)
-        self.assertIn("never locally substitute `READY` or `REVISE`", policy)
+        self.assertIn("If either named role has no valid receipt", policy)
+        self.assertIn("apply the review-service circuit breaker", policy)
+        self.assertIn("Never locally substitute `READY` or `REVISE`", policy)
         self.assertIn("label it `FIX`, `DEFER`, or `REJECT`", policy)
         reviewer = remora.load_agent_definitions()["security-reviewer"]
         verifier = remora.load_agent_definitions()["plan-verifier"]
         self.assertIn("Never execute commands", reviewer["prompt"])
         self.assertEqual(reviewer["tools"], ["Read", "Glob", "Grep", "WebSearch", "WebFetch"])
         self.assertEqual(verifier["tools"], ["Read", "Glob", "Grep"])
+
+    def test_policy_bounds_review_outages_and_isolates_blocked_siblings(self) -> None:
+        policy = remora.load_orchestration_policy()
+        self.assertIn("## Review-service circuit breaker", policy)
+        self.assertIn("Allow one\nbounded retry for the same stable unit and named role", policy)
+        self.assertIn("`WAITING_FOR_REVIEW`", policy)
+        self.assertIn("`PAUSED_VERIFICATION`", policy)
+        self.assertIn("solely because the\nservice is unavailable", policy)
+        self.assertIn("## Task ledger and blocked-task isolation", policy)
+        self.assertIn("stable id, outcome, scope, dependencies", policy)
+        self.assertIn("blocked task does not block sibling tasks", policy)
+        self.assertIn("do not emit `PAUSED_NEEDS_USER` while runnable tasks remain", policy)
+        self.assertIn("When only blocked tasks remain", policy)
 
     def test_direction_checkpoint_keeps_outcome_verdict_top_level(self) -> None:
         prompt = remora.load_agent_definitions()["verifier"]["prompt"]
@@ -598,7 +617,8 @@ class RemoraTests(unittest.TestCase):
         )
         self.assertIn("introduced P2 regressions remain blocking", architecture)
         self.assertIn("Risk-triggered completed-work outcome verification runs", architecture)
-        self.assertIn("material `FIX`, evidence-backed `DEFER`/`REJECT`", architecture)
+        self.assertIn("stops automatic resubmission and dispositions every blocker", architecture)
+        self.assertIn("one final fresh readiness pass", architecture)
 
     def test_plan_readiness_contract_is_bare_structured_bounded_and_slice_scoped(self) -> None:
         policy = remora.load_orchestration_policy()
@@ -629,19 +649,15 @@ class RemoraTests(unittest.TestCase):
         self.assertIn("tracked per stable readiness-unit ID, not across the whole program", policy)
         self.assertIn("after each `REVISE`", policy)
         self.assertIn("must use a fresh `plan-verifier`", policy)
-        self.assertIn("After two automatic `REVISE` verdicts in one readiness-unit epoch, stop resubmitting", policy)
+        self.assertIn("After two automatic `REVISE` verdicts in one readiness-unit epoch, stop automatic resubmission", policy)
         self.assertIn("disposition every blocker as `FIX`, `DEFER`, or `REJECT`", policy)
         self.assertIn("Ask the user only for unresolved P0/P1", policy)
         self.assertIn("The cap is not `READY`", policy)
         self.assertIn("user-directed continuation remains allowed", policy)
         self.assertIn("not the default recommendation", policy)
-        self.assertIn(
-            "a material `FIX`, genuine narrowing or split, or evidence-backed `DEFER`/`REJECT` may receive exactly one final fresh `plan-verifier` pass",
-            policy,
-        )
-        self.assertIn("this is not an automatic-loop reset", policy)
-        self.assertIn("another `REVISE` pauses or escalates the unit", policy)
-        self.assertIn("Superficial rewrites or cosmetic slice splits cannot reset the count", policy)
+        self.assertIn("may receive exactly one final fresh `plan-verifier` pass", policy)
+        self.assertIn("pause or escalate the unit", policy)
+        self.assertIn("Do not resubmit a substantially unchanged Plan", policy)
         self.assertIn("A `READY` slice may be presented for explicit approval and executed while unrelated or later slices remain in planning", policy)
         self.assertIn("review only the next executable slice by default", policy)
         self.assertIn("stop readiness review and present the envelope plus that slice", policy)
@@ -768,14 +784,23 @@ class RemoraTests(unittest.TestCase):
     def test_policy_requires_plan_convergence_or_escalation(self) -> None:
         policy = remora.load_orchestration_policy()
         self.assertIn("Do not resubmit a substantially unchanged slice Plan", policy)
-        self.assertIn("after the two-verdict brake", policy)
-        self.assertIn(
-            "requires one of a material `FIX`, an evidence-backed `DEFER`/`REJECT`, or a genuine narrowing or split",
-            policy,
-        )
+        self.assertIn("After two automatic verdicts", policy)
         self.assertIn("use the main-session `FIX`/`DEFER`/`REJECT` disposition", policy)
         self.assertIn("Ask only for an unresolved P0/P1", policy)
         self.assertIn("never treat the budget cap as `READY`", policy)
+        self.assertIn("one final fresh readiness pass", policy)
+        for path in (
+            ROOT / "README.md",
+            ROOT / "README.zh-TW.md",
+            ROOT / "docs" / "architecture.md",
+        ):
+            text = path.read_text(encoding="utf-8")
+            if path.name == "README.md":
+                self.assertIn("one final fresh review", text)
+            elif path.name == "README.zh-TW.md":
+                self.assertIn("一次最後的 fresh review", text)
+            else:
+                self.assertIn("one final fresh readiness pass", text)
         runbook = (ROOT / "install" / "AGENT-INSTALL.md").read_text(encoding="utf-8")
         self.assertIn(
             "when the independent-review trigger applies, gates the stable-ID program envelope",
@@ -1078,6 +1103,11 @@ class RemoraTests(unittest.TestCase):
                     {
                         "hooks": {"SessionStart": [{"command": "happy hook"}]},
                         "env": {"HAPPY_UNOWNED": secret},
+                        "enabledPlugins": {
+                            "pilotfish@pilotfish": True,
+                            "unrelated@vendor": True,
+                        },
+                        "permissions": {"allow": ["Read"]},
                         "fallbackModel": [fallback_secret, "gpt-5.6-terra"],
                     }
                 ),
@@ -1120,8 +1150,13 @@ class RemoraTests(unittest.TestCase):
             )
             self.assertEqual(settings["env"]["HAPPY_UNOWNED"], secret)
             self.assertEqual(
+                settings["enabledPlugins"],
+                {"pilotfish@pilotfish": False, "unrelated@vendor": True},
+            )
+            self.assertEqual(settings["permissions"], {"allow": ["Read"]})
+            self.assertEqual(
                 settings["availableModels"],
-                ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"],
+                ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"],
             )
         finally:
             remora.close_launch_resources(env)
@@ -1513,7 +1548,7 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(command[-len(args) :], args)
         self.assertEqual(launch_settings(command)["fallbackModel"], [])
 
-    def test_fallback_policy_preserves_explicit_terra_model_forms(self) -> None:
+    def test_fallback_policy_preserves_explicit_model_forms(self) -> None:
         cases = (
             ["--model", "sonnet"],
             ["-m", "sonnet"],
@@ -1534,21 +1569,28 @@ class RemoraTests(unittest.TestCase):
                     )
                 )
                 self.assertEqual(
-                    env["ANTHROPIC_DEFAULT_SONNET_MODEL"], "gpt-5.6-terra"
+                    env["ANTHROPIC_DEFAULT_SONNET_MODEL"], "gpt-5.6-sol"
                 )
                 self.assertEqual(launch_settings(command)["fallbackModel"], [])
 
-    def test_routing_settings_allow_models_and_disable_fallback(self) -> None:
+    def test_routing_settings_allow_models_and_disable_fallback_and_pilotfish(self) -> None:
         self.assertEqual(
             remora.routing_settings(self.config),
             {
                 "availableModels": [
                     "gpt-5.6-luna",
                     "gpt-5.6-sol",
-                    "gpt-5.6-terra",
+                    "gpt-6-astra",
                 ],
+                "enabledPlugins": {"pilotfish@pilotfish": False},
                 "fallbackModel": [],
             },
+        )
+        self.assertNotIn("gpt-5.6-terra", remora.configured_model_names(self.config))
+
+        self.config["models"]["default_sonnet"] = "gpt-5.6-terra"
+        self.assertIn(
+            "gpt-5.6-terra", remora.routing_settings(self.config)["availableModels"]
         )
 
     @mock.patch.dict(os.environ, {"REMORA_AUTH_TOKEN": "test-secret"}, clear=True)
@@ -1699,7 +1741,7 @@ class RemoraTests(unittest.TestCase):
             path.write_text((ROOT / "config.example.toml").read_text(), encoding="utf-8")
             with mock.patch.dict(os.environ, {"REMORA_CONFIG": str(path)}):
                 self.assertEqual(remora.config_path(), path)
-                self.assertEqual(remora.load_config()["models"]["main"], "gpt-5.6-sol")
+                self.assertEqual(remora.load_config()["models"]["main"], "gpt-6-astra")
 
     def test_context_policy_uses_safe_fallback_offline(self) -> None:
         policy = remora.resolve_context_policy(self.config)
@@ -1713,8 +1755,8 @@ class RemoraTests(unittest.TestCase):
 
     def test_context_policy_uses_smallest_configured_gateway_window(self) -> None:
         windows = {
+            "gpt-6-astra": 500000,
             "gpt-5.6-sol": 1050000,
-            "gpt-5.6-terra": 500000,
             "gpt-5.6-luna": 372000,
         }
         with mock.patch.object(
@@ -1745,13 +1787,13 @@ class RemoraTests(unittest.TestCase):
         config = json.loads(json.dumps(self.config))
         config["context"]["mode"] = "calico"
         gateway_windows = {
+            "gpt-6-astra": 372000,
             "gpt-5.6-sol": 372000,
-            "gpt-5.6-terra": 372000,
             "gpt-5.6-luna": 372000,
         }
         codex_windows = {
+            "gpt-6-astra": 272000,
             "gpt-5.6-sol": 272000,
-            "gpt-5.6-terra": 272000,
             "gpt-5.6-luna": 272000,
         }
         with (
@@ -2020,8 +2062,8 @@ class RemoraTests(unittest.TestCase):
             remora,
             "fetch_gateway_context_windows",
             return_value={
+                "gpt-6-astra": 372000,
                 "gpt-5.6-sol": 372000,
-                "gpt-5.6-terra": 372000,
                 "gpt-5.6-luna": 372000,
             },
         ):
@@ -2050,8 +2092,8 @@ class RemoraTests(unittest.TestCase):
         remora,
         "fetch_gateway_context_windows",
         return_value={
+            "gpt-6-astra": 372000,
             "gpt-5.6-sol": 372000,
-            "gpt-5.6-terra": 372000,
             "gpt-5.6-luna": 372000,
         },
     )

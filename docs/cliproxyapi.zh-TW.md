@@ -198,9 +198,9 @@ remora 會原樣傳送設定的 model name。CLIProxyAPI 的 `/v1/models` 必須
 
 | remora 欄位 | 預設模型 |
 |---|---|
-| `models.main` | `gpt-5.6-sol` |
-| `models.default_opus` | `gpt-5.6-sol` |
-| `models.default_sonnet` | `gpt-5.6-terra` |
+| `models.main` | `gpt-6-astra` |
+| `models.default_opus` | `gpt-6-astra` |
+| `models.default_sonnet` | `gpt-5.6-sol` |
 | `models.default_haiku` | `gpt-5.6-luna` |
 
 ```bash

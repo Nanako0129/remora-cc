@@ -27,7 +27,7 @@ test -f "$TMP/.config/remora-cc/config.toml"
 test -f "$TMP/.local/share/remora-cc/agents/orchestration.md"
 grep -Fq '## Bounded slice Plan-readiness contract' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"
-grep -Fq 'After two automatic `REVISE` verdicts in one readiness-unit epoch, stop resubmitting' \
+grep -Fq 'After two automatic `REVISE` verdicts in one readiness-unit epoch, stop automatic resubmission' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"
 grep -Fq 'stable readiness-unit ID' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"

@@ -327,9 +327,11 @@ class RemoraTests(unittest.TestCase):
 
     def test_policy_composes_with_delegation_planning_skills(self) -> None:
         policy = remora.load_orchestration_policy()
-        self.assertIn("delegation-planning skill such as Baton", policy)
-        self.assertIn("may shape discovery questions", policy)
-        self.assertIn("execution topology", policy)
+        self.assertIn("inspect the\nsession's available skills", policy)
+        self.assertIn("If `baton-dispatch` is listed", policy)
+        self.assertIn("invoke it\nonce to choose the smallest topology", policy)
+        self.assertIn("Baton may still select direct work", policy)
+        self.assertIn("If the\nskill is unavailable, apply this policy directly", policy)
         self.assertIn("This policy remains the source", policy)
         self.assertIn("named roles", policy)
         self.assertIn("model routing", policy)

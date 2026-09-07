@@ -336,8 +336,10 @@ runs needed to keep these guarantees evidence-based instead of assumed.
 
 remora packages the role-based orchestration pattern established by
 [pilotfish](https://github.com/Nanako0129/pilotfish) and composes with optional
-delegation planning such as [Baton](https://github.com/cablate/baton). It does
-not claim to invent multi-agent routing.
+delegation planning such as [Baton](https://github.com/cablate/baton). When that
+skill is listed, large or genuinely separable work invokes it once to select the
+smallest topology; Baton may still choose direct work. remora does not claim to
+invent multi-agent routing.
 
 ## License
 

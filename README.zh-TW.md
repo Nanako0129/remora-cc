@@ -306,7 +306,9 @@ custom plugin directory 不在此保證範圍內。
 remora 將 [pilotfish](https://github.com/Nanako0129/pilotfish) 的 role-based
 orchestration pattern 包裝成 session launcher，也能與
 [Baton](https://github.com/cablate/baton) 這類 optional delegation planning
-合成；它不宣稱發明 multi-agent routing。
+合成。當 session 列出這個 skill 時，大型或可明確拆分的工作會先呼叫一次，
+讓 Baton 選擇最小 topology；Baton 仍可判定由 main session 直接完成。
+remora 不宣稱發明 multi-agent routing。
 
 ## License
 

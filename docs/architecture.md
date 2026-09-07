@@ -119,7 +119,12 @@ Recurring work has no numeric delegation trigger. Remaining items are batched on
 
 Risk-triggered completed-work outcome verification runs at the smallest coherent integration boundary where the complete slice claim can be refuted. Tests and builds are intermediate evidence, while security, FFI, serialization, pre-aggregation, irreversible, and integration-blocking changes verify earlier. A missing review receipt gets one bounded retry, then the affected gate enters `WAITING_FOR_REVIEW` or `PAUSED_VERIFICATION`; blocked sibling tasks do not stop unrelated runnable work. Completed recon output is collected from the tracked task, and continuation is reserved for liveness, redirection, or genuinely new work.
 
-A delegation planner such as [Baton](https://github.com/cablate/baton) composes above this policy rather than replacing it. Baton may shape discovery questions, execution topology, worker count, ownership, sequence, budgets, and stop conditions. remora remains the authority for named roles, model routing, leaf-agent boundaries, approval, and the separate verifier roles; Plan synthesis, integration, and final judgment remain in the main session.
+A listed [Baton](https://github.com/cablate/baton) skill is invoked once before
+the direct-work or lifecycle choice for large, cross-surface, research-heavy,
+or genuinely separable work. It chooses the smallest topology and may still
+select direct work. remora remains the authority for named roles, model routing,
+leaf-agent boundaries, approval, and the separate verifier roles; Plan
+synthesis, integration, and final judgment remain in the main session.
 
 The backend-neutral guardrails follow the shared [pilotfish orchestration policy and evidence](https://github.com/Nanako0129/pilotfish), whose field observations came from remora sessions routed to GPT-5.6 and do not establish provider-independent numeric thresholds. The existing [remora + Baton compatibility gate](../benchmarks/baton-compatibility/README.md) validates the base role composition and lifecycle but predates these bounded Plan-readiness controls; deterministic policy and payload tests lock the new contracts without relabeling that older run.
 

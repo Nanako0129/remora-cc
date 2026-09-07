@@ -16,7 +16,9 @@ speed/cost trade-offs without claiming subscription-quota savings.
 
 Align shared policy semantics with pilotfish-codex `74ad9a7`: bounded retries
 for unavailable review services, task-ledger isolation of blocked siblings,
-and no automatic extra readiness pass after two `REVISE` verdicts. Claude's
+and no automatic extra readiness pass after two `REVISE` verdicts. When the
+`baton-dispatch` skill is listed, large or genuinely separable work now invokes
+it once before topology selection; Baton may still choose direct work. Claude's
 native background transport and existing approval boundaries remain intact.
 
 ## 0.1.22 - 2026-08-17

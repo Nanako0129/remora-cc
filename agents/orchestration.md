@@ -253,7 +253,15 @@ Role verdicts are evidence, not implementation or scope authority. Final disposi
 
 Before every agent call, identify the current phase and apply that phase's dispatch brake. Discovery needs a stable research contract, not a pre-decided implementation outcome. Writing agents need a stable execution contract and any required approval. At every phase, block fan-out when workers would repeatedly depend on the main session's evolving evidence, write ownership overlaps, no clear synthesis, integration, or verification owner exists, or coordination cost exceeds the likely benefit.
 
-A delegation-planning skill such as Baton may shape discovery questions, execution topology, worker count, ownership, sequence, budgets, and stop conditions. This policy remains the source for the available named roles, their model routing, leaf-agent boundary, approval gate, and verification contract. The two layers compose: planning guidance does not bypass remora's safety constraints, and remora does not suppress a planning skill's topology judgment within those constraints.
+Before taking the direct-work shortcut or choosing a lifecycle, inspect the
+session's available skills. If `baton-dispatch` is listed and the task is large,
+cross-surface, research-heavy, or has genuinely separable workstreams, invoke it
+once to choose the smallest topology. Baton may still select direct work. If the
+skill is unavailable, apply this policy directly. This policy remains the source
+for the available named roles, their model routing, leaf-agent boundary,
+approval gate, and verification contract. The two layers compose: planning
+guidance does not bypass remora's safety constraints, and remora does not
+suppress a planning skill's topology judgment within those constraints.
 
 In Discovery, choose the smallest read-only structure that materially reduces Plan uncertainty. A bounded search/read pass stays in the main session by default—even across separate directories—when splitting it would only duplicate startup and synthesis. Bounded fan-out is valid when surfaces are genuinely independent and substantial, external or tool latency can overlap, or independently gathered evidence is part of the acceptance contract. Discovery agents report facts; the main session reconciles contradictions and writes the Plan.
 

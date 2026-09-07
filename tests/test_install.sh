@@ -7,7 +7,7 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 mkdir -p "$TMP/.claude" "$TMP/bin"
 touch "$TMP/.claude/settings.json"
-printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/claude"
+printf '#!/bin/sh\n[ "${1:-}" != --version ] || echo "2.1.263 (Claude Code)"\nexit 0\n' > "$TMP/bin/claude"
 chmod +x "$TMP/bin/claude"
 BEFORE=$(find "$TMP/.claude" -type f -print | sort)
 BEFORE_CONTENT=$(cksum "$TMP/.claude/settings.json")
@@ -25,6 +25,9 @@ test "$BEFORE_CONTENT" = "$(cksum "$TMP/.claude/settings.json")"
 test -L "$TMP/.local/bin/remora"
 test -f "$TMP/.config/remora-cc/config.toml"
 test -f "$TMP/.local/share/remora-cc/agents/orchestration.md"
+test -f "$TMP/.local/share/remora-cc/src/orchestration_runtime.py"
+python3 "$TMP/.local/share/remora-cc/src/orchestration_runtime.py" --selftest \
+  | grep -Fq 'remora-orchestration-runtime schema=1 launchable'
 grep -Fq '## Bounded slice Plan-readiness contract' \
   "$TMP/.local/share/remora-cc/agents/orchestration.md"
 grep -Fq 'After two automatic `REVISE` verdicts in one readiness-unit epoch, stop automatic resubmission' \
@@ -54,6 +57,11 @@ HOME="$TMP" \
 XDG_CONFIG_HOME="$TMP/.config" \
 REMORA_AUTH_TOKEN=test-only \
   "$TMP/.local/bin/remora" doctor >/dev/null
+HOME="$TMP" \
+XDG_CONFIG_HOME="$TMP/.config" \
+XDG_STATE_HOME="$TMP/.local/state" \
+  "$TMP/.local/bin/remora" orchestration-status \
+  | grep -Fq '"registration": "configured_unobserved"'
 
 # A real launch prepares integration state outside native ~/.claude, then execs
 # the fake claude binary. This catches runtime writes that install-only checks miss.

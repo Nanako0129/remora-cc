@@ -107,6 +107,7 @@ Runtime behavior and reference documents:
 | Pilotfish plugin | Exact canonical id disabled for the child session | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | `fallbackModel: []`; CLI `--fallback-model` is rejected | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` composes caller then remora policy | [Role policy](./docs/architecture.md#role-policy) |
+| Orchestration receipts | Native hooks record bounded source-bound runtime evidence; missing observations stay unverified | [Runtime evidence](./docs/architecture.md#orchestration-runtime-evidence) |
 | Context and Calico | Fails closed on stale or inconsistent metadata | [CLIProxyAPI context runbook](./docs/cliproxyapi.md#context-window-alignment) |
 | Compact hardening | remora marks `REMORA_ACTIVE` only; Calico body policy + gateway class guard | [Compact request hardening](./docs/cliproxyapi.md#compact-request-hardening-calico--gateway) |
 | Active-turn bridge | Experimental and topology-limited | [Gateway runbook](./docs/cliproxyapi.md#experimental-active-turn-bridge) |
@@ -248,6 +249,16 @@ remora dry-run --fast --continue
 | `remora agents` | Show effective role, model, and effort assignments |
 | `remora render-agents` | Print the exact `--agents` JSON |
 | `remora dry-run --continue` | Show a token-free launch preview |
+| `remora orchestration-status` | Show registration state and sanitized latest receipts without a model call |
+
+`runtime.orchestration_hooks` defaults to `true`. Registration is active only
+when Claude Code reports hook support, hooks are enabled, and remora still owns
+the root policy and `--agents` roster. Explicit `--agent`, replacement
+`--agents` or policy, `disableAllHooks: true`, and unsupported runtimes omit the
+Remora hook groups and their environment snapshot. `configured_unobserved`
+means the launcher registered hooks; it does not prove they fired. Only a
+source-bound receipt with matching emitted model, effort, identity, and
+completion evidence reports `VERIFIED`.
 
 ## Isolation and security
 

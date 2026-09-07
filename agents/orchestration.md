@@ -253,6 +253,13 @@ For any program envelope or slice involving authentication, authorization, crede
 
 `READY` means readiness only, never user approval. The Approval phase remains separate: after a `READY` slice verdict, the main session must still present that slice and wait for explicit user approval before sending an implementation brief or writing. The outcome `verifier` retains its separate `CONFIRMED`/`REFUTED`/`INCONCLUSIVE` vocabulary; no outcome label can substitute for slice readiness or approval.
 
+When the Remora runtime supplies an `automatic_plan_review` requirement, put
+its exact two-line request prefix at the start of the native `plan-verifier`
+task prompt: first `readiness_review`, then the supplied
+`automatic_plan_review:<prompt-hash>` tag. Do not reuse that tag for
+`semantic_adjudication`. The runtime reminder requests review evidence only;
+it does not accept the Plan, grant approval, or start an agent itself.
+
 At a stable slice boundary, the existing `verifier` may receive an explicit
 `direction_checkpoint` contract containing the original outcome,
 non-negotiable constraints, current slice acceptance, latest verified good

@@ -104,6 +104,7 @@ Runtime 行為與參考文件：
 | Pilotfish plugin | 只在 child session 停用精確 canonical id | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Fallback | 注入 `fallbackModel: []`；拒絕 CLI `--fallback-model` | [Isolation contract](./docs/architecture.md#isolation-contract) |
 | Wrapper prompts | `REMORA_COMPOSE_SYSTEM_PROMPT=1` 依序合成 caller 與 remora policy | [Role policy](./docs/architecture.md#role-policy) |
+| Orchestration receipts | Native hooks 只記錄有界且綁定 source 的 runtime 證據；缺少觀測值時維持未驗證 | [Runtime evidence](./docs/architecture.md#orchestration-runtime-evidence) |
 | Context 與 Calico | Metadata 過期或不一致時 fail closed | [CLIProxyAPI context runbook](./docs/cliproxyapi.zh-TW.md#context-window-對齊) |
 | Compact 硬化 | remora 只標 `REMORA_ACTIVE`；body 歸 Calico、class guard 歸 gateway | [Compact 請求硬化](./docs/cliproxyapi.zh-TW.md#compact-請求硬化calico--gateway) |
 | Active-turn bridge | 實驗性功能，只支援有限 topology | [Gateway runbook](./docs/cliproxyapi.zh-TW.md#實驗性-active-turn-bridge) |
@@ -238,6 +239,16 @@ remora dry-run --fast --continue
 | `remora agents` | 顯示有效角色、model 與 effort |
 | `remora render-agents` | 印出完整 `--agents` JSON |
 | `remora dry-run --continue` | 顯示不含 token 的 launch preview |
+| `remora orchestration-status` | 不呼叫 model，顯示 registration 狀態與已清理的最新 receipts |
+
+`runtime.orchestration_hooks` 預設為 `true`。只有 Claude Code 回報支援 hooks、
+hooks 未停用，而且 remora 仍掌握 root policy 與 `--agents` roster 時，才會
+註冊 runtime hooks。明確的 `--agent`、替代用的 `--agents` 或 policy、
+`disableAllHooks: true`，以及不支援的 runtime，都會省略 Remora hook groups
+與對應的 environment snapshot。`configured_unobserved` 只表示 launcher 已
+註冊 hooks，不能證明 hooks 實際執行。只有 source 綁定正確，且 emitted
+model、effort、identity 與 completion 證據一致的 receipt，才會標為
+`VERIFIED`。
 
 ## 隔離與安全
 

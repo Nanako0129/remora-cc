@@ -25,6 +25,7 @@ flowchart TD
 | Agents | Sends all eight pilotfish-compatible role names in one JSON object through `--agents` | Claude Code scopes them to the current session and shadows same-name user roles |
 | Canonical plugin | Sets `enabledPlugins.pilotfish@pilotfish=false` in the session settings | The normally installed Pilotfish plugin cannot add ambient policy or namespaced roles to the remora child |
 | Orchestration | Appends a phase-aware dispatch, bounded Plan-readiness, and dependency-scheduling policy | Discovery, Plan, Approval, Execution, and Verification use different stable contracts |
+| Runtime evidence | Appends native hook groups only while remora owns the canonical role map and policy | Receipts distinguish configured, observed, skipped, failed, and verified evidence |
 | Authentication | Resolves a remora-specific token, then sets `ANTHROPIC_AUTH_TOKEN` only in the child | The user's Anthropic login is neither read nor replaced on disk |
 | Caller environment | Removes remora-owned gateway, model, session, Fast, context, concurrency, effort, tool-search, and coralline keys from caller settings `env` | The environment synthesized by `build_launch` remains the runtime source of truth while unrelated caller variables survive |
 | Model defaults | Sets the three documented `ANTHROPIC_DEFAULT_*_MODEL` variables in the child | Internal Claude tiers resolve to gateway model names |
@@ -66,6 +67,50 @@ The example configuration sends the main session to Astra and keeps the named ro
 For every existing named role, its `--agents` definition is the sole model source. The orchestrator omits the Agent tool's invocation-level `model` field because Claude Code gives that field higher precedence than the role definition. An explicit invocation model is reserved for a truly ad-hoc agent with no named definition.
 
 Background execution is a parent-orchestrator decision, so it cannot be enforced inside a leaf agent prompt. remora therefore appends a child-session-only policy: every delegation uses `run_in_background: true`, including a result required by the main session's very next action; the parent then waits for and collects that task instead of switching it to foreground execution. Long-running commands remain parent-owned and use the execution tool's native background mode, never shell detachment such as `&`, `nohup`, or `disown`. Explicit user `--append-system-prompt` or `--append-system-prompt-file` arguments replace this default unless `REMORA_COMPOSE_SYSTEM_PROMPT=1`; in that opt-in mode remora reads either caller source, accepts separated values beginning with `-`, stops scanning at `--`, places caller content before the orchestration policy, and forwards one inline append prompt. Agent SDK callers that would otherwise overwrite the CLI prompt during their initialize protocol can pass the caller text through the child-only `REMORA_CALLER_SYSTEM_PROMPT` bridge; remora consumes and removes that variable before launching the runtime.
+
+## Orchestration runtime evidence
+
+The launcher appends Remora-owned `UserPromptSubmit`, `SubagentStart`,
+`SubagentStop`, `Stop`, and `SessionEnd` command groups to compatible caller
+hooks. The command and argument are separate exec-form values: the absolute
+Python interpreter and installed sibling `src/orchestration_runtime.py`.
+Existing hook groups stay in order. Registration is omitted when hooks are
+disabled, Claude Code support is unknown or older than 2.1.196, the caller
+selects a custom root agent or replacement roster, or the canonical policy is
+replaced rather than composed.
+
+The runtime hashes native `prompt_id`, session and agent identifiers. It stores
+no prompt, response, final child text, raw identifier, transcript path or
+credential in receipts. Root and child transcripts are bounded, read without
+following symlinks beneath the configured Claude projects root, and checked for
+ownership, writable permissions and identity changes. Model and effort are
+observations from persisted assistant records; configured values never fill a
+missing observation. An async launch also needs a linked, completed
+`TaskOutput`. Source, role, policy, prompt, parent/child or completion drift
+keeps the receipt `SKIPPED` or `FAILED`.
+
+Risk-triggered Plan review uses an exact two-line task prefix:
+`readiness_review`, then `automatic_plan_review:<native-prompt-hash>`.
+Only a completed, linked `plan-verifier` with exact bare `READY` or structured
+four-field `REVISE` supplies review-service evidence. `REVISE` never grants
+readiness or write authority. Missing evidence can block root Stop once per
+blocker fingerprint; it does not accept a Plan or grant approval.
+
+State lives in the Remora XDG state root under `orchestration/`, with private
+directories, bounded atomic files and a nonblocking advisory lock. The runtime
+keeps at most 128 session states, 64 child events per prompt, and one latest
+receipt per known role and contract. `SessionEnd` removes only that session
+state. After affected sessions have ended, abandoned states may be cleared by
+removing only `${XDG_STATE_HOME:-$HOME/.local/state}/remora-cc/orchestration/sessions/*.json`
+while Remora is not running. `remora orchestration-status` reads sanitized
+receipts without a model call. For isolated fixtures, invoke
+`python3 src/orchestration_runtime.py --verify` with explicit root transcript,
+child transcript, projects root, role, model, effort and prompt ID arguments;
+it prints a receipt or writes only to an explicit private output directory and
+never updates live latest-receipt state. This mechanism is a workflow guard and
+evidence recorder, not a security sandbox; it does not resist a process with
+the same filesystem privileges, override managed hook policy, or prove hook
+firing from configuration alone.
 
 Scheduling begins only after the current phase's dispatch brake. Discovery needs a stable question, allowed scope, evidence format, and stop condition; it does not require a pre-decided implementation outcome. The main session reconciles evidence and synthesizes one Plan. Large, architectural, risky, or explicitly plan-first work then waits for explicit approval before any implementation brief or source edit. Execution requires stable scope, exclusive ownership, constraints, done criteria, integration, and verification. Completed-work verification starts only when there is a concrete integrated claim to refute.
 

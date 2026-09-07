@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import errno
+import functools
 import hashlib
+import importlib.util
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -25,6 +28,7 @@ VERSION = "0.1.22"
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_FILE = ROOT / "agents" / "agents.json"
 ORCHESTRATION_FILE = ROOT / "agents" / "orchestration.md"
+ORCHESTRATION_RUNTIME_FILE = ROOT / "src" / "orchestration_runtime.py"
 DEFAULT_CONFIG = Path.home() / ".config" / "remora-cc" / "config.toml"
 MODEL_ENV = {
     "default_opus": "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -59,6 +63,7 @@ REMORA_BUILTIN_COMMANDS = {
     "agents",
     "render-agents",
     "dry-run",
+    "orchestration-status",
     "version",
     "--version",
     "-V",
@@ -66,6 +71,15 @@ REMORA_BUILTIN_COMMANDS = {
     "--help",
     "-h",
 }
+MIN_ORCHESTRATION_HOOK_VERSION = (2, 1, 196)
+ORCHESTRATION_ENV_NAMES = frozenset(
+    {
+        "REMORA_ORCHESTRATION_STATE_ROOT",
+        "REMORA_ORCHESTRATION_PROJECTS_ROOT",
+        "REMORA_ORCHESTRATION_ROLE_BINDINGS",
+        "REMORA_ORCHESTRATION_SOURCE_HASHES",
+    }
+)
 CALICO_CONTEXT_MAP_ENV = "CALICO_MODEL_CONTEXT_WINDOWS"
 CALICO_DISPLAY_PERCENT_ENV = "CALICO_CONTEXT_DISPLAY_PERCENT"
 # coralline (a Claude Code statusline) keeps cross-session stores for its 5h/7d
@@ -130,8 +144,23 @@ PROTECTED_SETTINGS_ENV = frozenset(
         CALICO_DISPLAY_PERCENT_ENV,
         "CORALLINE_CONFIG",
         *CORALLINE_STORE_ENV,
+        *ORCHESTRATION_ENV_NAMES,
     }
 )
+
+
+def _load_orchestration_runtime() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "remora_orchestration_runtime", ORCHESTRATION_RUNTIME_FILE
+    )
+    if spec is None or spec.loader is None:
+        raise RemoraError("cannot load orchestration hook runtime")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+orchestration_runtime = _load_orchestration_runtime()
 
 
 class RemoraError(RuntimeError):
@@ -168,7 +197,11 @@ def validate_config(config: dict[str, Any]) -> None:
     if missing:
         raise RemoraError(f"missing required configuration: {', '.join(missing)}")
 
-    apply_stream_idle_timeouts(config.get("runtime", {}), {})
+    runtime = config.get("runtime", {})
+    apply_stream_idle_timeouts(runtime, {})
+    orchestration_hooks = runtime.get("orchestration_hooks", True)
+    if not isinstance(orchestration_hooks, bool):
+        raise RemoraError("runtime.orchestration_hooks must be true or false")
 
     definitions = load_agent_definitions()
     model_map = config.get("agent_models", {})
@@ -735,6 +768,120 @@ def sanitize_caller_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
+@functools.lru_cache(maxsize=8)
+def claude_hook_runtime_version(claude_bin: str) -> tuple[int, int, int] | None:
+    """Return a supported Claude Code version without launching a model call."""
+    try:
+        completed = subprocess.run(
+            [claude_bin, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?!\d)", completed.stdout)
+    return tuple(map(int, match.groups())) if match else None
+
+
+def orchestration_registration(
+    config: dict[str, Any],
+    claude_args: list[str],
+    caller_settings: dict[str, Any],
+    claude_bin: str,
+) -> tuple[dict[str, Any], str]:
+    """Append native hook groups when the canonical Remora contract is intact."""
+    runtime = config.get("runtime", {})
+    if runtime.get("orchestration_hooks", True) is not True:
+        return caller_settings, "disabled_by_config"
+    if caller_settings.get("disableAllHooks") is True:
+        return caller_settings, "disabled_by_caller"
+    if has_option(claude_args, "--agents"):
+        return caller_settings, "replacement_agents"
+    if has_option(claude_args, "--agent"):
+        return caller_settings, "custom_root_agent"
+    compose = os.environ.get(COMPOSE_SYSTEM_PROMPT_ENV, "").strip() == "1"
+    if not compose and (
+        has_option(claude_args, "--append-system-prompt")
+        or has_option(claude_args, "--append-system-prompt-file")
+    ):
+        return caller_settings, "replacement_policy"
+    version = claude_hook_runtime_version(claude_bin)
+    if version is None or version < MIN_ORCHESTRATION_HOOK_VERSION:
+        return caller_settings, "unsupported_hook_runtime"
+    hooks = caller_settings.get("hooks", {})
+    if not isinstance(hooks, dict):
+        return caller_settings, "unsupported_caller_hooks"
+    for event in ("UserPromptSubmit", "SubagentStart", "SubagentStop", "Stop", "SessionEnd"):
+        if event in hooks and not isinstance(hooks[event], list):
+            return caller_settings, "unsupported_caller_hooks"
+    command_hook = {
+        "type": "command",
+        "command": str(Path(sys.executable).resolve()),
+        "args": [str(ORCHESTRATION_RUNTIME_FILE.resolve())],
+        "timeout": orchestration_runtime.HOOK_TIMEOUT_SECONDS,
+    }
+    merged = dict(caller_settings)
+    merged_hooks = dict(hooks)
+    for event in ("UserPromptSubmit", "SubagentStart", "SubagentStop", "Stop", "SessionEnd"):
+        merged_hooks[event] = [*merged_hooks.get(event, []), {"hooks": [dict(command_hook)]}]
+    merged["hooks"] = merged_hooks
+    return merged, "configured_unobserved"
+
+
+def orchestration_environment(
+    config: dict[str, Any], env: dict[str, str]
+) -> dict[str, str]:
+    """Return the bounded, nonsecret environment consumed by the hook runtime."""
+    bindings = {
+        role: {"model": agent["model"], "effort": agent["effort"]}
+        for role, agent in render_agents(config).items()
+    }
+    claude_config = Path(env.get("CLAUDE_CONFIG_DIR", Path(env.get("HOME", str(Path.home()))) / ".claude"))
+    snapshot = {
+        "REMORA_ORCHESTRATION_STATE_ROOT": str(
+            (remora_state_dir(env) / "orchestration").resolve(strict=False)
+        ),
+        "REMORA_ORCHESTRATION_PROJECTS_ROOT": str(
+            (claude_config / "projects").resolve(strict=False)
+        ),
+        "REMORA_ORCHESTRATION_ROLE_BINDINGS": json.dumps(
+            bindings, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        ),
+        "REMORA_ORCHESTRATION_SOURCE_HASHES": json.dumps(
+            {
+                "policy": hashlib.sha256(ORCHESTRATION_FILE.read_bytes()).hexdigest(),
+                "roles": hashlib.sha256(AGENTS_FILE.read_bytes()).hexdigest(),
+                "runtime": hashlib.sha256(ORCHESTRATION_RUNTIME_FILE.read_bytes()).hexdigest(),
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    }
+    if any(len(value.encode("utf-8")) > 65_536 for value in snapshot.values()):
+        raise RemoraError("orchestration hook environment exceeds its safe bound")
+    return snapshot
+
+
+def strip_orchestration_environment(env: dict[str, str]) -> None:
+    for name in ORCHESTRATION_ENV_NAMES:
+        env.pop(name, None)
+
+
+def orchestration_status(config: dict[str, Any]) -> dict[str, Any]:
+    state_root = remora_state_dir(os.environ.copy()) / "orchestration"
+    payload = orchestration_runtime.status(state_root)
+    enabled = config.get("runtime", {}).get("orchestration_hooks", True)
+    claude_bin = str(config.get("runtime", {}).get("claude_binary", "claude"))
+    _, registration = orchestration_registration(config, [], {}, claude_bin)
+    payload["enabled"] = enabled
+    payload["launch_registration"] = registration
+    payload["registration"] = "observed" if payload["receipts"] else registration
+    return payload
+
+
 def start_settings_cleanup_watcher(path: str) -> int:
     read_fd, guard_fd = os.pipe()
     started = False
@@ -1068,6 +1215,9 @@ def build_launch(
         if settings_value is not None
         else {}
     )
+    settings, orchestration_state = orchestration_registration(
+        config, args, settings, claude_bin
+    )
     settings = merge_settings(settings, routing_settings(config))
     try:
         serialized_settings = json.dumps(
@@ -1122,6 +1272,9 @@ def build_launch(
     env.pop(CALLER_SYSTEM_PROMPT_ENV, None)
     env.pop(SETTINGS_FILE_ENV, None)
     env.pop(SETTINGS_GUARD_FD_ENV, None)
+    strip_orchestration_environment(env)
+    if orchestration_state == "configured_unobserved":
+        env.update(orchestration_environment(config, env))
     if fast:
         apply_fast_mode(env)
     source_config = coralline_source_config(env)
@@ -1213,6 +1366,42 @@ def doctor(config: dict[str, Any], online: bool) -> int:
     else:
         failures += 1
         print(f"FAIL claude binary not found: {claude_bin}")
+
+    hooks_enabled = config.get("runtime", {}).get("orchestration_hooks", True)
+    hook_version = claude_hook_runtime_version(claude_bin) if claude_path else None
+    if not hooks_enabled:
+        print("INFO orchestration hooks: disabled by configuration")
+    elif hook_version is None or hook_version < MIN_ORCHESTRATION_HOOK_VERSION:
+        print("WARN orchestration hooks: runtime support unverified; registration is inactive")
+    else:
+        print(
+            "PASS orchestration hooks: "
+            f"Claude Code {'.'.join(map(str, hook_version))} supports registration; "
+            "actual firing remains unobserved until a receipt exists"
+        )
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(ORCHESTRATION_RUNTIME_FILE), "--selftest"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if completed.stdout.strip() == orchestration_runtime.SELFTEST_OK:
+            print("PASS orchestration runtime: hook entry point is launchable")
+        else:
+            failures += 1
+            print("FAIL orchestration runtime: self-test returned an unexpected result")
+    except (OSError, subprocess.SubprocessError):
+        failures += 1
+        print("FAIL orchestration runtime: hook entry point is not launchable")
+    observed = orchestration_runtime.status(
+        remora_state_dir(os.environ.copy()) / "orchestration"
+    )["receipts"]
+    if observed:
+        print(f"PASS orchestration evidence: {len(observed)} sanitized latest receipt(s)")
+    else:
+        print("INFO orchestration evidence: no observed receipt")
 
     print(f"PASS configuration: {config_path()}")
     print(f"PASS agents: {len(render_agents(config))} definitions render correctly")
@@ -1338,6 +1527,7 @@ def dry_run(config: dict[str, Any], args: list[str], *, fast: bool = False) -> N
                 "ENABLE_TOOL_SEARCH",
                 "CORALLINE_CONFIG",
                 *CORALLINE_STORE_ENV,
+                *sorted(ORCHESTRATION_ENV_NAMES),
             ]
             if key in env
         }
@@ -1351,7 +1541,15 @@ def dry_run(config: dict[str, Any], args: list[str], *, fast: bool = False) -> N
             )
         print(
             json.dumps(
-                {"environment": shown_env, "command": command},
+                {
+                    "environment": shown_env,
+                    "command": command,
+                    "orchestration": {
+                        "registration": "configured_unobserved"
+                        if ORCHESTRATION_ENV_NAMES.issubset(env)
+                        else "inactive"
+                    },
+                },
                 ensure_ascii=False,
                 indent=2,
             )
@@ -1368,6 +1566,8 @@ commands:
   agents             show the effective role/model/effort map
   render-agents      print the exact JSON passed to Claude Code
   dry-run [args...]  show the sanitized child environment and command
+  orchestration-status
+                     show configured registration and sanitized latest receipts
   version            print remora version
   help               show this help
 
@@ -1414,6 +1614,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if command == "dry-run":
             dry_run(config, args[1:], fast=fast)
+            return 0
+        if command == "orchestration-status":
+            if len(args) != 1:
+                raise RemoraError("orchestration-status does not accept arguments")
+            payload = orchestration_status(config)
+            print(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True))
             return 0
 
         source_config = coralline_source_config(os.environ.copy())

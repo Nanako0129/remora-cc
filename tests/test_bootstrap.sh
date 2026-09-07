@@ -72,6 +72,8 @@ tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
   | grep -qx "remora-cc-$VERSION/agents/orchestration.md"
 tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
   | grep -qx "remora-cc-$VERSION/agents/agents.json"
+tar -tzf "$TMP/release/remora-cc-$VERSION.tar.gz" \
+  | grep -qx "remora-cc-$VERSION/src/orchestration_runtime.py"
 
 PATH="$TMP/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
 HOME="$TMP/home" \
@@ -85,6 +87,8 @@ REMORA_RELEASE_BASE_URL="file://$TMP/release" \
 test -L "$TMP/home/.local/bin/remora"
 test -f "$TMP/home/.config/remora-cc/config.toml"
 test "$(HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config" "$TMP/home/.local/bin/remora" version)" = "remora $VERSION"
+python3 "$TMP/home/.local/share/remora-cc/src/orchestration_runtime.py" --selftest \
+  | grep -Fq 'remora-orchestration-runtime schema=1 launchable'
 grep -Fq 'Blocker:' "$TMP/home/.local/share/remora-cc/agents/agents.json"
 grep -Fq 'After two automatic `REVISE` verdicts in one readiness-unit epoch, stop automatic resubmission' \
   "$TMP/home/.local/share/remora-cc/agents/orchestration.md"

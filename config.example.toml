@@ -54,6 +54,9 @@ security-executor = "max"
 
 [runtime]
 claude_binary = "claude"
+# Register bounded native hooks only while remora owns the role map and policy.
+# Set false to omit every remora hook group and orchestration state variable.
+orchestration_hooks = true
 max_tool_use_concurrency = 3
 enable_tool_search = false
 clear_subagent_model_override = true

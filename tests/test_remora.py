@@ -2194,6 +2194,142 @@ class RemoraTests(unittest.TestCase):
         self.assertNotIn('"CLAUDE_CODE_AUTO_COMPACT_WINDOW"', output.getvalue())
         self.assertNotIn('"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"', output.getvalue())
 
+    def test_orchestration_hooks_append_exec_form_and_snapshot(self) -> None:
+        caller = {
+            "hooks": {
+                "Stop": [
+                    {
+                        "hooks": [
+                            {"type": "command", "command": "/caller/hook"}
+                        ]
+                    }
+                ]
+            }
+        }
+        with mock.patch.object(
+            remora, "claude_hook_runtime_version", return_value=(2, 1, 263)
+        ):
+            command, env = remora.build_launch(
+                self.config,
+                ["--settings", json.dumps(caller)],
+                require_token=False,
+            )
+        try:
+            settings = launch_settings(command)
+            self.assertEqual(settings["hooks"]["Stop"][0], caller["hooks"]["Stop"][0])
+            for event in (
+                "UserPromptSubmit",
+                "SubagentStart",
+                "SubagentStop",
+                "Stop",
+                "SessionEnd",
+            ):
+                hook = settings["hooks"][event][-1]["hooks"][0]
+                self.assertEqual(hook["type"], "command")
+                self.assertEqual(hook["command"], str(Path(remora.sys.executable).resolve()))
+                self.assertEqual(hook["args"], [str(remora.ORCHESTRATION_RUNTIME_FILE.resolve())])
+                self.assertEqual(hook["timeout"], 10)
+            self.assertEqual(
+                set(remora.ORCHESTRATION_ENV_NAMES).intersection(env),
+                set(remora.ORCHESTRATION_ENV_NAMES),
+            )
+            bindings = json.loads(env["REMORA_ORCHESTRATION_ROLE_BINDINGS"])
+            self.assertEqual(bindings["executor"], {"model": "gpt-5.6-luna", "effort": "max"})
+        finally:
+            remora.close_launch_resources(env)
+
+    def test_orchestration_exec_arguments_remain_literal(self) -> None:
+        unusual = Path(self.temporary_path if hasattr(self, "temporary_path") else "/tmp") / "space '$`$(touch nope).py"
+        with (
+            mock.patch.object(remora, "ORCHESTRATION_RUNTIME_FILE", unusual),
+            mock.patch.object(remora, "claude_hook_runtime_version", return_value=(2, 1, 263)),
+        ):
+            settings, state = remora.orchestration_registration(
+                self.config, [], {}, "claude"
+            )
+        hook = settings["hooks"]["Stop"][0]["hooks"][0]
+        self.assertEqual(state, "configured_unobserved")
+        self.assertEqual(hook["args"], [str(unusual.resolve())])
+
+    def test_orchestration_inactive_predicates_strip_inherited_state(self) -> None:
+        cases = (
+            ({"runtime": {"orchestration_hooks": False}}, [], {}, "disabled_by_config"),
+            ({}, ["--agents", "{}"], {}, "replacement_agents"),
+            ({}, ["--agent", "custom"], {}, "custom_root_agent"),
+            ({}, [], {"disableAllHooks": True}, "disabled_by_caller"),
+            ({}, ["--append-system-prompt", "custom"], {}, "replacement_policy"),
+        )
+        for overlay, args, settings, reason in cases:
+            with self.subTest(reason=reason):
+                config = json.loads(json.dumps(self.config))
+                for section, values in overlay.items():
+                    config.setdefault(section, {}).update(values)
+                child = {name: "inherited" for name in remora.ORCHESTRATION_ENV_NAMES}
+                with (
+                    mock.patch.dict(
+                        os.environ,
+                        {**child, remora.COMPOSE_SYSTEM_PROMPT_ENV: "0"},
+                        clear=False,
+                    ),
+                    mock.patch.object(remora, "claude_hook_runtime_version", return_value=(2, 1, 263)),
+                ):
+                    registered, actual = remora.orchestration_registration(
+                        config, args, settings, "claude"
+                    )
+                    env = os.environ.copy()
+                    remora.strip_orchestration_environment(env)
+                self.assertEqual(actual, reason)
+                self.assertNotIn("hooks", registered)
+                self.assertFalse(set(remora.ORCHESTRATION_ENV_NAMES).intersection(env))
+
+    def test_unknown_or_old_hook_runtime_is_inactive(self) -> None:
+        for version in (None, (2, 1, 195)):
+            with (
+                self.subTest(version=version),
+                mock.patch.object(remora, "claude_hook_runtime_version", return_value=version),
+            ):
+                settings, state = remora.orchestration_registration(
+                    self.config, [], {}, "claude"
+                )
+                self.assertEqual(settings, {})
+                self.assertEqual(state, "unsupported_hook_runtime")
+
+    def test_inactive_launches_emit_no_hook_groups_or_snapshot(self) -> None:
+        cases = (
+            ([], {"runtime": {"orchestration_hooks": False}}),
+            (["--agents", "{}"], {}),
+            (["--agent", "custom"], {}),
+            (["--settings", '{"disableAllHooks":true}'], {}),
+            (["--append-system-prompt", "custom"], {}),
+        )
+        for args, overlay in cases:
+            with self.subTest(args=args):
+                config = json.loads(json.dumps(self.config))
+                for section, values in overlay.items():
+                    config.setdefault(section, {}).update(values)
+                inherited = {name: "must-be-removed" for name in remora.ORCHESTRATION_ENV_NAMES}
+                with (
+                    mock.patch.dict(
+                        os.environ,
+                        {**inherited, remora.COMPOSE_SYSTEM_PROMPT_ENV: "0"},
+                        clear=False,
+                    ),
+                    mock.patch.object(remora, "claude_hook_runtime_version", return_value=(2, 1, 263)),
+                ):
+                    command, env = remora.build_launch(config, args, require_token=False)
+                try:
+                    settings = launch_settings(command)
+                    self.assertNotIn("hooks", settings)
+                    self.assertFalse(set(remora.ORCHESTRATION_ENV_NAMES).intersection(env))
+                finally:
+                    remora.close_launch_resources(env)
+
+    def test_orchestration_config_requires_boolean(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        config["runtime"]["orchestration_hooks"] = "true"
+        with self.assertRaisesRegex(remora.RemoraError, "orchestration_hooks"):
+            remora.validate_config(config)
+
 
 if __name__ == "__main__":
     unittest.main()

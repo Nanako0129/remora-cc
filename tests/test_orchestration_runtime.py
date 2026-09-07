@@ -201,6 +201,20 @@ class RuntimeTests(unittest.TestCase):
         state = json.loads(next((self.state / "sessions").glob("*.json")).read_text())
         self.assertFalse(state["active"]["required"])
 
+    def test_each_mandatory_risk_category_requires_review(self) -> None:
+        cases = {
+            "data": "Plan the database migration.",
+            "external": "Plan an external action.",
+            "irreversible": "Plan an irreversible operation.",
+            "release": "Plan a production deployment.",
+            "security": "Plan the authentication change.",
+        }
+        for category, prompt in cases.items():
+            with self.subTest(category=category):
+                categories = runtime.classify_prompt(prompt)
+                self.assertIn(category, categories)
+                self.assertTrue(runtime.requires_review(categories))
+
     def test_matching_sync_runtime_evidence_verifies_ready(self) -> None:
         runtime.handle(self.prompt())
         self.start_and_stop_child(self.child_transcript())

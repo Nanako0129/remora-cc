@@ -806,9 +806,12 @@ def orchestration_registration(
         return caller_settings, "disabled_by_config"
     if caller_settings.get("disableAllHooks") is True:
         return caller_settings, "disabled_by_caller"
-    if has_option(claude_args, "--agents"):
+    option_scan_args = omit_option_values(
+        claude_args, {"--append-system-prompt", "--append-system-prompt-file"}
+    )
+    if has_option(option_scan_args, "--agents"):
         return caller_settings, "replacement_agents"
-    if has_option(claude_args, "--agent"):
+    if has_option(option_scan_args, "--agent"):
         return caller_settings, "custom_root_agent"
     compose = os.environ.get(COMPOSE_SYSTEM_PROMPT_ENV, "").strip() == "1"
     if not compose and (

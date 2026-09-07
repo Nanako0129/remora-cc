@@ -96,11 +96,16 @@ class RemoraTests(unittest.TestCase):
         self.assertEqual(command[command.index("--effort") + 1], "high")
         self.assertEqual(command[-3:], ["--", "--effort", "low"])
 
-        command, _ = remora.build_launch(
-            self.config, ["--append-system-prompt", "--effort"], require_token=False
-        )
+        with mock.patch.dict(
+            os.environ, {remora.COMPOSE_SYSTEM_PROMPT_ENV: ""}, clear=False
+        ):
+            command, _ = remora.build_launch(
+                self.config,
+                ["--append-system-prompt", "--effort"],
+                require_token=False,
+            )
         self.assertEqual(command[command.index("--effort") + 1], "high")
-        self.assertTrue(command[-1].startswith("--effort\n\n# remora session orchestration"))
+        self.assertEqual(command[-1], "--effort")
 
     def test_default_effort_accepts_only_supported_values(self) -> None:
         for value in ("", "reasoning", 1, True, None):
@@ -2295,6 +2300,26 @@ class RemoraTests(unittest.TestCase):
         hook = settings["hooks"]["Stop"][0]["hooks"][0]
         self.assertEqual(state, "configured_unobserved")
         self.assertEqual(hook["args"], [str(unusual.resolve())])
+
+    def test_prompt_operands_do_not_disable_composed_orchestration(self) -> None:
+        for operand in ("--agents", "--agent"):
+            with (
+                self.subTest(operand=operand),
+                mock.patch.dict(
+                    os.environ, {remora.COMPOSE_SYSTEM_PROMPT_ENV: "1"}, clear=False
+                ),
+                mock.patch.object(
+                    remora, "claude_hook_runtime_version", return_value=(2, 1, 263)
+                ),
+            ):
+                settings, state = remora.orchestration_registration(
+                    self.config,
+                    ["--append-system-prompt", operand],
+                    {},
+                    "claude",
+                )
+            self.assertEqual(state, "configured_unobserved")
+            self.assertIn("hooks", settings)
 
     def test_orchestration_inactive_predicates_strip_inherited_state(self) -> None:
         cases = (

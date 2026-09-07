@@ -191,7 +191,7 @@ def classify_review_intent(prompt: object) -> str | None:
 
 
 def requires_review(categories: tuple[str, ...]) -> bool:
-    return bool(categories) and ("security" in categories or len(categories) >= 2)
+    return bool(categories)
 
 
 def blocker_fingerprint(prompt: object, categories: tuple[str, ...]) -> str | None:

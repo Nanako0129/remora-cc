@@ -25,15 +25,6 @@ git status --short
 
 The suite includes installer isolation, unrelated-executable collision protection, offline bootstrap installation, and checksum rejection. No test may require a real gateway or modify the developer's `~/.claude` directory.
 
-The v0.1.22 candidate also gates its only runtime change and the existing fake-Claude launch isolation test:
-
-```bash
-git show v0.1.21:src/remora.py |
-  sed 's/^VERSION = "0.1.21"$/VERSION = "0.1.22"/' |
-  cmp - src/remora.py
-sh tests/test_install.sh
-```
-
 ## Publish
 
 Before tagging, confirm that repository Settings > Releases reports **Immutable releases: Enabled**. Commit the reviewed tree, create a signed tag when signing is configured, and push the branch and tag:

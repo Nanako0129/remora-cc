@@ -2,7 +2,7 @@
 
 All notable changes to remora are documented here.
 
-## Unreleased
+## 0.1.23 - 2026-09-07
 
 Disable the canonical `pilotfish@pilotfish` plugin only inside Remora sessions
 so its hook policy and namespaced agents cannot compete with Remora's roles.

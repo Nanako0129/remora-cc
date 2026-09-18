@@ -19,7 +19,7 @@ reviews:
         documentation or tests without turning the launcher into a proxy,
         account manager, GUI, or persistent Claude configuration manager.
 
-        Out of scope, explicitly: editing `~/.claude`, bundling OAuth tokens,
+        Out of scope, explicitly: editing ~/.claude, bundling OAuth tokens,
         reimplementing gateway translation, shell-evaluated secret commands.
         Flag a change that crosses one of those lines even when the code is
         clean.

@@ -1,0 +1,53 @@
+# CodeRabbit configuration.
+# Schema: https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# Every instruction below restates a rule this repository already writes down in
+# CONTRIBUTING.md. Nothing here is a new policy.
+#
+# The one setting that is a choice rather than a restatement is
+# auto_pause_after_reviewed_commits, commented at its key.
+
+reviews:
+  auto_review:
+    # 0 disables the pause entirely, which is the schema's documented sentinel
+    # ("Set to 0 to disable"), not a large number chosen by hand. At the default
+    # of 5, automatic review stops silently once a pull request has five
+    # reviewed commits, and a poller waiting on the verdict reads that pause as
+    # a timeout rather than as a stop. Measured: sepia#250 ran four rounds.
+    auto_pause_after_reviewed_commits: 0
+
+  path_instructions:
+    - path: "**"
+      instructions: |
+        Scope (CONTRIBUTING.md). remora stays intentionally small. A change
+        should strengthen session-scoped routing, portability, diagnostics,
+        documentation or tests without turning the launcher into a proxy,
+        account manager, GUI, or persistent Claude configuration manager.
+
+        Out of scope, explicitly: editing ~/.claude, bundling OAuth tokens,
+        reimplementing gateway translation, shell-evaluated secret commands.
+        Flag a change that crosses one of those lines even when the code is
+        clean.
+
+    - path: "{tests/**,test/**}"
+      instructions: |
+        Tests must not require a real gateway, modify the developer's Claude
+        configuration, or print secrets. An integration that needs a live
+        provider belongs behind an explicit opt-in flag and must redact
+        authentication and response bodies by default.
+
+        A PR touching launcher or installer behaviour needs a regression test
+        for it.
+
+    - path: "{README.md,README.zh-TW.md,docs/**}"
+      instructions: |
+        Keep the English and Traditional Chinese setup instructions aligned when
+        a change alters user-visible behaviour. A documentation change that
+        updates one language and not the other leaves the two disagreeing about
+        what the tool does.
+
+knowledge_base:
+  code_guidelines:
+    filePatterns:
+      - "CONTRIBUTING.md"
+      - "README.md"
